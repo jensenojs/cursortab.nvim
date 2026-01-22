@@ -297,8 +297,9 @@ func (p *Provider) parseCompletion(req *types.CompletionRequest, completionText 
 	// Strip any trailing <|file_sep|> or </s> tokens that might have leaked
 	completionText = strings.TrimSuffix(completionText, "<|file_sep|>")
 	completionText = strings.TrimSuffix(completionText, "</s>")
-	// Trim leading/trailing whitespace for cleaner comparison
-	completionText = strings.TrimSpace(completionText)
+	// Trim only leading newlines (preserve indentation) and trailing whitespace
+	completionText = strings.TrimLeft(completionText, "\n")
+	completionText = strings.TrimRight(completionText, " \t\n\r")
 
 	// Calculate the window that was sent in the prompt
 	cursorLine := req.CursorRow - 1 // Convert to 0-indexed
@@ -307,7 +308,7 @@ func (p *Provider) parseCompletion(req *types.CompletionRequest, completionText 
 
 	// Get the original window content for comparison
 	oldLines := req.Lines[windowStart:windowEnd]
-	oldText := strings.TrimSpace(strings.Join(oldLines, "\n"))
+	oldText := strings.TrimRight(strings.Join(oldLines, "\n"), " \t\n\r")
 
 	// If the new text equals old text, no completion needed
 	if completionText == oldText {
@@ -318,9 +319,8 @@ func (p *Provider) parseCompletion(req *types.CompletionRequest, completionText 
 	newLines := strings.Split(completionText, "\n")
 
 	return &types.Completion{
-		StartLine:  windowStart + 1,     // Convert back to 1-indexed
-		EndLineInc: windowEnd,           // windowEnd is 0-indexed exclusive = 1-indexed inclusive
+		StartLine:  windowStart + 1, // Convert back to 1-indexed
+		EndLineInc: windowEnd,       // windowEnd is 0-indexed exclusive = 1-indexed inclusive
 		Lines:      newLines,
 	}
 }
-
