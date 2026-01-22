@@ -77,8 +77,21 @@ function events.setup()
 				return
 			end
 
-			if ui.has_cursor_prediction() or ui.has_completion() then
+			-- Handle cursor prediction (always clear - no partial match logic)
+			if ui.has_cursor_prediction() then
 				ui.ensure_close_all()
+			elseif ui.has_completion() then
+				-- For completions, check if typing matches the prediction
+				-- If it matches, update ghost text locally to avoid visual glitch
+				-- If it doesn't match, clear immediately to avoid showing stale ghost text
+				local current_line = vim.api.nvim_get_current_line()
+				local cursor_line = vim.fn.line(".")
+				if ui.typing_matches_completion(cursor_line, current_line) then
+					-- Update extmark position/content locally for smooth visual
+					ui.update_ghost_text_for_typing(cursor_line, current_line)
+				else
+					ui.ensure_close_all()
+				end
 			end
 
 			daemon.send_event("text_changed")

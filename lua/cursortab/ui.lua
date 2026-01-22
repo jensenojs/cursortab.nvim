@@ -12,6 +12,18 @@ local has_completion = false
 ---@type boolean
 local has_cursor_prediction = false
 
+-- Expected line state for partial typing optimization (append_chars only)
+---@type string|nil
+local expected_line = nil -- Target line content
+---@type integer|nil
+local expected_line_num = nil -- Which line (1-indexed)
+---@type integer|nil
+local original_len = nil -- Original content length before ghost text
+---@type integer|nil
+local append_chars_extmark_id = nil -- Extmark ID for the append_chars ghost text
+---@type integer|nil
+local append_chars_buf = nil -- Buffer where the extmark was created
+
 -- State for cursor prediction jump text
 ---@type integer|nil
 local jump_text_extmark_id = nil
@@ -276,9 +288,21 @@ local function create_overlay_window(parent_win, buffer_line, col, content, synt
 	return overlay_win, overlay_buf, bytes_trimmed_first_line
 end
 
+-- Helper to clear expected line state
+local function clear_expected_line_state()
+	expected_line = nil
+	expected_line_num = nil
+	original_len = nil
+	append_chars_extmark_id = nil
+	append_chars_buf = nil
+end
+
 -- Function to show completion diff highlighting (called from Go)
 ---@param diff_result DiffResult Completion diff result from Go daemon
 local function show_completion(diff_result)
+	-- Clear expected line state at start (will be populated if we find append_chars)
+	clear_expected_line_state()
+
 	-- Get current buffer
 	---@type integer
 	local current_buf = vim.api.nvim_get_current_buf()
@@ -325,6 +349,15 @@ local function show_completion(diff_result)
 				-- For append_chars, show only the appended part using colStart
 				local appended_text = string.sub(line_diff.content, line_diff.colStart + 1)
 
+				-- Store expected line state for partial typing optimization
+				-- Only store the first append_chars (most relevant for typing)
+				local is_first_append_chars = expected_line == nil
+				if is_first_append_chars then
+					expected_line = line_diff.content
+					expected_line_num = absolute_line_num
+					original_len = line_diff.colStart
+				end
+
 				if appended_text and appended_text ~= "" then
 					-- Try multiple positioning strategies to ensure visibility
 					local line_content = vim.api.nvim_buf_get_lines(current_buf, nvim_line, nvim_line + 1, false)[1]
@@ -341,6 +374,12 @@ local function show_completion(diff_result)
 							hl_mode = "combine",
 						})
 					table.insert(completion_extmarks, { buf = current_buf, extmark_id = extmark_id })
+
+					-- Store extmark info for the first append_chars (for live update during typing)
+					if is_first_append_chars then
+						append_chars_extmark_id = extmark_id
+						append_chars_buf = current_buf
+					end
 				end
 			elseif line_diff.type == "delete_chars" then
 				-- For delete_chars, highlight the column range that was deleted
@@ -467,16 +506,11 @@ local function show_completion(diff_result)
 					overlay_line = buf_line_count -- Position after last existing line
 				else
 					-- Addition is within buffer - place above the target line
-					virtual_extmark_id = vim.api.nvim_buf_set_extmark(
-						current_buf,
-						daemon.get_namespace_id(),
-						adjusted_nvim_line,
-						0,
-						{
+					virtual_extmark_id =
+						vim.api.nvim_buf_set_extmark(current_buf, daemon.get_namespace_id(), adjusted_nvim_line, 0, {
 							virt_lines = { { { "", "Normal" } } },
 							virt_lines_above = true, -- Place above the target line
-						}
-					)
+						})
 					-- Overlay should match where the virtual line was placed
 					overlay_line = adjusted_nvim_line
 				end
@@ -722,6 +756,7 @@ end
 function ui.ensure_close_all()
 	ensure_close_cursor_prediction()
 	ensure_close_completion()
+	clear_expected_line_state()
 end
 
 -- Show completion diff highlighting
@@ -757,6 +792,69 @@ end
 ---@return boolean
 function ui.has_cursor_prediction()
 	return has_cursor_prediction
+end
+
+-- Check if typed content matches the expected completion (for partial typing optimization)
+-- Returns true if current line is a valid progression toward the expected completion
+---@param line_num integer Current cursor line (1-indexed)
+---@param current_content string Current line content
+---@return boolean
+function ui.typing_matches_completion(line_num, current_content)
+	if not expected_line or not expected_line_num or not original_len then
+		return false
+	end
+	if line_num ~= expected_line_num then
+		return false
+	end
+	-- Current must be: longer than original AND a prefix of target
+	local current_len = #current_content
+	if current_len <= original_len then
+		return false
+	end
+	return expected_line:sub(1, current_len) == current_content
+end
+
+-- Update the ghost text extmark after user typed matching content
+-- This avoids visual glitch where old extmark shifts before daemon re-renders
+---@param line_num integer Current cursor line (1-indexed)
+---@param current_content string Current line content
+function ui.update_ghost_text_for_typing(line_num, current_content)
+	if not expected_line or not append_chars_extmark_id or not append_chars_buf then
+		return
+	end
+	if not vim.api.nvim_buf_is_valid(append_chars_buf) then
+		return
+	end
+
+	-- Calculate remaining ghost text
+	local current_len = #current_content
+	local remaining_ghost = expected_line:sub(current_len + 1)
+
+	-- Delete old extmark
+	pcall(vim.api.nvim_buf_del_extmark, append_chars_buf, daemon.get_namespace_id(), append_chars_extmark_id)
+
+	-- If there's remaining ghost text, create new extmark at end of current line
+	if remaining_ghost and remaining_ghost ~= "" then
+		local nvim_line = line_num - 1 -- Convert to 0-indexed
+		local new_extmark_id =
+			vim.api.nvim_buf_set_extmark(append_chars_buf, daemon.get_namespace_id(), nvim_line, current_len, {
+				virt_text = { { remaining_ghost, "cursortabhl_completion" } },
+				virt_text_pos = "overlay",
+				hl_mode = "combine",
+			})
+		append_chars_extmark_id = new_extmark_id
+
+		-- Also update in completion_extmarks array for proper cleanup
+		for i, info in ipairs(completion_extmarks) do
+			if info.buf == append_chars_buf and info.extmark_id ~= new_extmark_id then
+				-- Replace old entry with new one
+				completion_extmarks[i] = { buf = append_chars_buf, extmark_id = new_extmark_id }
+				break
+			end
+		end
+	else
+		append_chars_extmark_id = nil
+	end
 end
 
 ---Create a scratch buffer window with content (replaces floating window)

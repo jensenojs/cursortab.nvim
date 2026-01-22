@@ -74,8 +74,115 @@ func (e *Engine) handleEsc() {
 }
 
 func (e *Engine) handleTextChange() {
+	// If we have an active completion, check if the user typed content that matches the prediction
+	// Lua handles the visual update locally; we just need to detect match vs mismatch here
+	if e.state == stateHasCompletion && len(e.completions) > 0 && e.n != nil {
+		e.buffer.SyncIn(e.n, e.WorkspacePath)
+
+		matches, hasRemaining := e.checkTypingMatchesPrediction()
+		if matches {
+			if hasRemaining {
+				// Typing matches - Lua already updated the visual, just keep completion state
+				log.Printf("typing matches prediction, keeping completion state")
+				return
+			}
+			// User typed everything - completion fully typed
+			log.Printf("typing matches prediction, completion fully typed")
+			e.clearCompletionState()
+			e.state = stateIdle
+			e.startTextChangeTimer()
+			return
+		}
+		log.Printf("typing does not match prediction, rejecting")
+	}
+
 	e.reject()
 	e.startTextChangeTimer()
+}
+
+// checkTypingMatchesPrediction checks if the current buffer state (after user typed)
+// matches the prediction, meaning the user typed content consistent with the completion.
+// Returns (matches, hasRemaining) where:
+// - matches: true if the current buffer is a valid prefix of the target
+// - hasRemaining: true if there's still content left to predict
+func (e *Engine) checkTypingMatchesPrediction() (bool, bool) {
+	if len(e.completions) == 0 || len(e.completionOriginalLines) == 0 {
+		return false, false
+	}
+
+	completion := e.completions[0]
+	targetLines := completion.Lines
+	originalLines := e.completionOriginalLines
+
+	if len(targetLines) == 0 {
+		return false, false
+	}
+
+	startIdx := completion.StartLine - 1 // Convert to 0-indexed
+	if startIdx < 0 || startIdx >= len(e.buffer.Lines) {
+		return false, false
+	}
+
+	// For simplicity, only optimize when completion doesn't delete lines
+	if len(targetLines) < len(originalLines) {
+		return false, false
+	}
+
+	// Get current buffer lines in the target range
+	targetEndIdx := startIdx + len(targetLines) - 1
+	var currentLines []string
+	for i := startIdx; i <= targetEndIdx && i < len(e.buffer.Lines); i++ {
+		currentLines = append(currentLines, e.buffer.Lines[i])
+	}
+
+	if len(currentLines) == 0 {
+		return false, false
+	}
+
+	// Check each current line is a prefix of the corresponding target line
+	// and track if user made progress
+	madeProgress := false
+	for i, currentLine := range currentLines {
+		if i >= len(targetLines) {
+			return false, false
+		}
+
+		targetLine := targetLines[i]
+
+		// Current line must be a prefix of target line
+		if len(currentLine) > len(targetLine) {
+			return false, false
+		}
+		if currentLine != targetLine[:len(currentLine)] {
+			return false, false
+		}
+
+		// Check if user made progress compared to original
+		if i < len(originalLines) {
+			if currentLine != originalLines[i] && len(currentLine) > len(originalLines[i]) {
+				madeProgress = true
+			}
+		} else if currentLine != "" {
+			madeProgress = true
+		}
+	}
+
+	if !madeProgress {
+		return false, false
+	}
+
+	// Check if there's remaining content to predict
+	hasRemaining := len(currentLines) < len(targetLines)
+	if !hasRemaining {
+		for i := range currentLines {
+			if i < len(targetLines) && len(currentLines[i]) < len(targetLines[i]) {
+				hasRemaining = true
+				break
+			}
+		}
+	}
+
+	return true, hasRemaining
 }
 
 func (e *Engine) handleTextChangeTimeout() {
@@ -125,8 +232,15 @@ func (e *Engine) handleCompletionReady(response *types.CompletionResponse) {
 	e.cursorTarget = response.CursorTarget
 
 	if len(response.Completions) > 0 {
-		if e.buffer.HasChanges(response.Completions[0].StartLine, response.Completions[0].EndLineInc, response.Completions[0].Lines) {
-			e.applyBatch = e.buffer.OnCompletionReady(e.n, response.Completions[0].StartLine, response.Completions[0].EndLineInc, response.Completions[0].Lines)
+		completion := response.Completions[0]
+		if e.buffer.HasChanges(completion.StartLine, completion.EndLineInc, completion.Lines) {
+			e.applyBatch = e.buffer.OnCompletionReady(e.n, completion.StartLine, completion.EndLineInc, completion.Lines)
+
+			// Store original buffer lines for partial typing optimization
+			e.completionOriginalLines = nil
+			for i := completion.StartLine; i <= completion.EndLineInc && i-1 < len(e.buffer.Lines); i++ {
+				e.completionOriginalLines = append(e.completionOriginalLines, e.buffer.Lines[i-1])
+			}
 		} else {
 			log.Printf("no changes to completion")
 			e.handleCursorTarget()

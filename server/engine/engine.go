@@ -58,6 +58,9 @@ type Engine struct {
 	applyBatch   *nvim.Batch
 	cursorTarget *types.CursorPredictionTarget
 
+	// Original buffer lines when completion was shown (for partial typing optimization)
+	completionOriginalLines []string
+
 	// Prefetch state
 	prefetchedCompletions   []*types.Completion
 	prefetchedCursorTarget  *types.CursorPredictionTarget
@@ -171,6 +174,7 @@ func (e *Engine) clearStateUnsafe() {
 	e.prefetchedCursorTarget = nil
 	e.prefetchInProgress = false
 	e.waitingForPrefetchOnTab = false
+	e.completionOriginalLines = nil
 }
 
 func (e *Engine) eventLoop(ctx context.Context) {
@@ -287,6 +291,7 @@ func (e *Engine) clearCompletionState() {
 	e.prefetchedCursorTarget = nil
 	e.prefetchInProgress = false
 	e.waitingForPrefetchOnTab = false
+	e.completionOriginalLines = nil
 }
 
 // clearCompletionStateExceptPrefetch clears the currently completion without affecting prefetched data
@@ -300,6 +305,7 @@ func (e *Engine) clearCompletionStateExceptPrefetch() {
 	}
 	e.completions = nil
 	e.applyBatch = nil
+	e.completionOriginalLines = nil
 }
 
 func (e *Engine) reject() {
@@ -537,7 +543,6 @@ func (e *Engine) getAllFileDiffHistories() []*types.FileDiffHistory {
 	}
 	return histories
 }
-
 
 func (e *Engine) acceptCursorTarget() {
 	if e.n == nil || e.cursorTarget == nil {
