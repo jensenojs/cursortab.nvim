@@ -1,5 +1,10 @@
 -- Configuration management for cursortab.nvim
 
+---@class CursortabCursorPredictionConfig
+---@field enabled boolean
+---@field auto_advance boolean
+---@field dist_threshold integer
+
 ---@class CursortabConfig
 ---@field deletion_color string
 ---@field addition_color string
@@ -16,6 +21,7 @@
 ---@field text_changed_debounce integer
 ---@field event_debounce integer
 ---@field completion_timeout integer
+---@field cursor_prediction CursortabCursorPredictionConfig
 ---@field debug_immediate_shutdown boolean
 ---@field debug_color string
 ---@field provider_url string
@@ -46,6 +52,11 @@ local default_config = {
 	idle_completion_delay = 50, -- Delay in ms after being idle in normal mode to trigger completion (-1 to disable)
 	text_changed_debounce = 50, -- Debounce in ms after text changed to trigger completion
 	completion_timeout = 5000, -- Timeout in ms for completion requests
+	cursor_prediction = {
+		enabled = true, -- Show jump indicators after completions
+		auto_advance = true, -- On no-op (no changes), jump to last line and retrigger
+		dist_threshold = 2, -- Lines apart to trigger staging (0 to disable)
+	},
 
 	-- Provider Options (applied to all providers: autocomplete, sweep, zeta)
 	provider_url = "http://localhost:8000", -- URL of the provider server

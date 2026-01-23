@@ -25,12 +25,19 @@ const (
 	stateHasCursorTarget
 )
 
+type CursorPredictionConfig struct {
+	Enabled       bool // Show jump indicators (default: true)
+	AutoAdvance   bool // On no-op, jump to last line + retrigger (default: true)
+	DistThreshold int  // Lines apart to trigger staging (default: 3)
+}
+
 type EngineConfig struct {
-	NsID                int
-	CompletionTimeout   time.Duration
-	IdleCompletionDelay time.Duration
-	TextChangeDebounce  time.Duration
-	MaxDiffTokens       int // Maximum tokens for diff history per file (0 = no limit)
+	NsID                     int
+	CompletionTimeout        time.Duration
+	IdleCompletionDelay      time.Duration
+	TextChangeDebounce       time.Duration
+	CursorPrediction CursorPredictionConfig
+	MaxDiffTokens            int  // Maximum tokens for diff history per file (0 = no limit)
 }
 
 type Engine struct {
@@ -59,6 +66,9 @@ type Engine struct {
 	completions  []*types.Completion
 	applyBatch   *nvim.Batch
 	cursorTarget *types.CursorPredictionTarget
+
+	// Staged completion state (for multi-stage completions)
+	stagedCompletion *types.StagedCompletion
 
 	// Original buffer lines when completion was shown (for partial typing optimization)
 	completionOriginalLines []string
@@ -172,6 +182,7 @@ func (e *Engine) clearStateUnsafe() {
 	e.completions = nil
 	e.applyBatch = nil
 	e.cursorTarget = nil
+	e.stagedCompletion = nil
 	e.prefetchedCompletions = nil
 	e.prefetchedCursorTarget = nil
 	e.prefetchInProgress = false
@@ -297,6 +308,7 @@ func (e *Engine) clearCompletionState() {
 	}
 	e.completions = nil
 	e.applyBatch = nil
+	e.stagedCompletion = nil
 	e.prefetchedCompletions = nil
 	e.prefetchedCursorTarget = nil
 	e.prefetchInProgress = false
@@ -429,14 +441,14 @@ func (e *Engine) requestPrefetch(source types.CompletionSource, overrideRow int,
 }
 
 func (e *Engine) handleCursorTarget() {
-	if e.cursorTarget != nil {
+	if !e.config.CursorPrediction.Enabled {
+		e.reject()
+		return
+	}
+
+	if e.cursorTarget != nil && e.cursorTarget.LineNumber >= 1 {
 		e.state = stateHasCursorTarget
-		lineNumber := e.cursorTarget.LineNumber
-		if lineNumber >= 1 {
-			e.buffer.OnCursorPredictionReady(e.n, int(lineNumber))
-		} else {
-			e.reject()
-		}
+		e.buffer.OnCursorPredictionReady(e.n, int(e.cursorTarget.LineNumber))
 	} else {
 		e.reject()
 	}
@@ -464,6 +476,20 @@ func (e *Engine) acceptCompletion() {
 	}
 
 	e.clearCompletionStateExceptPrefetch()
+
+	// Handle staged completions: if there are more stages, show cursor target to next stage
+	if e.stagedCompletion != nil {
+		e.stagedCompletion.CurrentIdx++
+		if e.stagedCompletion.CurrentIdx < len(e.stagedCompletion.Stages) {
+			// More stages remaining - sync buffer and show cursor target to next stage
+			e.buffer.SyncIn(e.n, e.WorkspacePath)
+			e.handleCursorTarget() // Shows jump indicator to next stage
+			return
+		}
+		// All stages complete - clear staged completion
+		// (cursorTarget already has ShouldRetrigger from last stage if applicable)
+		e.stagedCompletion = nil
+	}
 
 	// Prefetch next completion if cursor target requests retrigger (after applying current completion)
 	if e.cursorTarget != nil && e.cursorTarget.ShouldRetrigger {
@@ -568,6 +594,13 @@ func (e *Engine) acceptCursorTarget() {
 		e.buffer.OnReject(e.n)
 	}
 
+	// Handle staged completions: if there are more stages, show the next stage
+	if e.stagedCompletion != nil && e.stagedCompletion.CurrentIdx < len(e.stagedCompletion.Stages) {
+		e.buffer.SyncIn(e.n, e.WorkspacePath)
+		e.showCurrentStage()
+		return
+	}
+
 	if len(e.prefetchedCompletions) > 0 {
 		e.state = stateHasCompletion
 		e.completions = e.prefetchedCompletions
@@ -600,6 +633,32 @@ func (e *Engine) acceptCursorTarget() {
 
 	e.state = stateIdle
 	e.cursorTarget = nil
+}
+
+// showCurrentStage displays the current stage of a multi-stage completion
+func (e *Engine) showCurrentStage() {
+	if e.stagedCompletion == nil || e.stagedCompletion.CurrentIdx >= len(e.stagedCompletion.Stages) {
+		return
+	}
+
+	stage := e.stagedCompletion.Stages[e.stagedCompletion.CurrentIdx]
+
+	e.completions = []*types.Completion{stage.Completion}
+	e.cursorTarget = stage.CursorTarget
+	e.state = stateHasCompletion
+
+	e.applyBatch = e.buffer.OnCompletionReady(
+		e.n,
+		stage.Completion.StartLine,
+		stage.Completion.EndLineInc,
+		stage.Completion.Lines,
+	)
+
+	// Store original buffer lines for partial typing optimization
+	e.completionOriginalLines = nil
+	for i := stage.Completion.StartLine; i <= stage.Completion.EndLineInc && i-1 < len(e.buffer.Lines); i++ {
+		e.completionOriginalLines = append(e.completionOriginalLines, e.buffer.Lines[i-1])
+	}
 }
 
 // handleDeferredCursorTarget handles cursor target logic that was deferred due to prefetch in progress

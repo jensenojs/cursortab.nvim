@@ -52,6 +52,11 @@ local function start_daemon()
 		provider_max_tokens = cfg.provider_max_tokens,
 		provider_top_k = cfg.provider_top_k,
 		log_level = cfg.log_level,
+		cursor_prediction = {
+			enabled = cfg.cursor_prediction.enabled,
+			auto_advance = cfg.cursor_prediction.auto_advance,
+			dist_threshold = cfg.cursor_prediction.dist_threshold,
+		},
 	})
 
 	local env = vim.fn.environ()

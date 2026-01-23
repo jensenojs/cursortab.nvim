@@ -2,6 +2,7 @@ package engine
 
 import (
 	"cursortab/logger"
+	"cursortab/text"
 	"cursortab/types"
 )
 
@@ -233,7 +234,49 @@ func (e *Engine) handleCompletionReady(response *types.CompletionResponse) {
 
 	if len(response.Completions) > 0 {
 		completion := response.Completions[0]
+
 		if e.buffer.HasChanges(completion.StartLine, completion.EndLineInc, completion.Lines) {
+			// Has changes - check if we should split into stages
+			if e.config.CursorPrediction.Enabled && e.config.CursorPrediction.DistThreshold > 0 && len(completion.Lines) > 0 {
+				// Extract the original lines in the completion range
+				var originalLines []string
+				for i := completion.StartLine; i <= completion.EndLineInc && i-1 < len(e.buffer.Lines); i++ {
+					originalLines = append(originalLines, e.buffer.Lines[i-1])
+				}
+
+				// Analyze the diff
+				originalText := text.JoinLines(originalLines)
+				newText := text.JoinLines(completion.Lines)
+				diffResult := text.AnalyzeDiffForStaging(originalText, newText)
+
+				// Check if we should split
+				if text.ShouldSplitCompletion(diffResult, e.config.CursorPrediction.DistThreshold) {
+					clusters := text.ClusterChanges(diffResult, e.config.CursorPrediction.DistThreshold)
+					if len(clusters) > 1 {
+						// Create staged completion
+						stages := text.CreateStagesFromClusters(
+							clusters,
+							originalLines,
+							completion.Lines,
+							e.buffer.Row,
+							e.buffer.Path,
+							completion.StartLine, // base offset for coordinate mapping
+						)
+
+						if len(stages) > 0 {
+							e.stagedCompletion = &types.StagedCompletion{
+								Stages:     stages,
+								CurrentIdx: 0,
+								SourcePath: e.buffer.Path,
+							}
+							e.showCurrentStage()
+							return
+						}
+					}
+				}
+			}
+
+			// Normal single-completion flow
 			e.applyBatch = e.buffer.OnCompletionReady(e.n, completion.StartLine, completion.EndLineInc, completion.Lines)
 
 			// Store original buffer lines for partial typing optimization
@@ -242,8 +285,20 @@ func (e *Engine) handleCompletionReady(response *types.CompletionResponse) {
 				e.completionOriginalLines = append(e.completionOriginalLines, e.buffer.Lines[i-1])
 			}
 		} else {
+			// NO CHANGES - handle no-op case
 			logger.Debug("no changes to completion")
-			e.handleCursorTarget()
+
+			if e.config.CursorPrediction.AutoAdvance && e.config.CursorPrediction.Enabled {
+				// Create cursor target to last line with retrigger
+				e.cursorTarget = &types.CursorPredictionTarget{
+					LineNumber:      int32(completion.EndLineInc),
+					ShouldRetrigger: true,
+				}
+				e.handleCursorTarget() // Shows jump indicator
+			} else {
+				e.handleCursorTarget() // Existing behavior (likely reject)
+			}
+			return
 		}
 
 		if len(response.Completions) > 1 {

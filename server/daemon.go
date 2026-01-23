@@ -49,11 +49,16 @@ func NewDaemon(config Config) (*Daemon, error) {
 	}
 
 	eng, err := engine.NewEngine(provider, engine.EngineConfig{
-		NsID:                config.NsID,
-		CompletionTimeout:   time.Duration(config.CompletionTimeout) * time.Millisecond,
-		IdleCompletionDelay: time.Duration(config.IdleCompletionDelay) * time.Millisecond,
-		TextChangeDebounce:  time.Duration(config.TextChangeDebounce) * time.Millisecond,
-		MaxDiffTokens:       config.MaxContextTokens / 2,
+		NsID:                     config.NsID,
+		CompletionTimeout:        time.Duration(config.CompletionTimeout) * time.Millisecond,
+		IdleCompletionDelay:      time.Duration(config.IdleCompletionDelay) * time.Millisecond,
+		TextChangeDebounce:       time.Duration(config.TextChangeDebounce) * time.Millisecond,
+		CursorPrediction: engine.CursorPredictionConfig{
+			Enabled:       config.CursorPrediction.Enabled,
+			AutoAdvance:   config.CursorPrediction.AutoAdvance,
+			DistThreshold: config.CursorPrediction.DistThreshold,
+		},
+		MaxDiffTokens:            config.MaxContextTokens / 2,
 	})
 	if err != nil {
 		return nil, err

@@ -24,6 +24,20 @@ type CursorPredictionTarget struct {
 	ShouldRetrigger bool
 }
 
+// CompletionStage represents one stage of a multi-stage completion
+type CompletionStage struct {
+	Completion   *Completion
+	CursorTarget *CursorPredictionTarget
+	IsLastStage  bool
+}
+
+// StagedCompletion holds the queue of pending stages
+type StagedCompletion struct {
+	Stages     []*CompletionStage
+	CurrentIdx int
+	SourcePath string
+}
+
 // CompletionRequest contains all the context needed for unified completion requests
 type CompletionRequest struct {
 	Source        CompletionSource

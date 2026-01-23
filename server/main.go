@@ -9,20 +9,27 @@ import (
 	"syscall"
 )
 
+type CursorPredictionConfig struct {
+	Enabled       bool `json:"enabled"`
+	AutoAdvance   bool `json:"auto_advance"`
+	DistThreshold int  `json:"dist_threshold"`
+}
+
 type Config struct {
-	NsID                   int     `json:"ns_id"`
-	Provider               string  `json:"provider"`
-	IdleCompletionDelay    int     `json:"idle_completion_delay"` // in milliseconds
-	TextChangeDebounce     int     `json:"text_change_debounce"`  // in milliseconds
-	CompletionTimeout      int     `json:"completion_timeout"`    // in milliseconds
-	DebugImmediateShutdown bool    `json:"debug_immediate_shutdown"`
-	MaxContextTokens       int     `json:"max_context_tokens"` // max tokens for context trimming
-	ProviderURL            string  `json:"provider_url"`
-	ProviderModel          string  `json:"provider_model"`
-	ProviderTemperature    float64 `json:"provider_temperature"`
-	ProviderMaxTokens      int     `json:"provider_max_tokens"`
-	ProviderTopK           int     `json:"provider_top_k"`
-	LogLevel               string  `json:"log_level"` // debug, info, warn, error
+	NsID                   int                    `json:"ns_id"`
+	Provider               string                 `json:"provider"`
+	IdleCompletionDelay    int                    `json:"idle_completion_delay"` // in milliseconds
+	TextChangeDebounce     int                    `json:"text_change_debounce"`  // in milliseconds
+	CompletionTimeout      int                    `json:"completion_timeout"`    // in milliseconds
+	CursorPrediction       CursorPredictionConfig `json:"cursor_prediction"`
+	ProviderURL            string                 `json:"provider_url"`
+	ProviderModel          string                 `json:"provider_model"`
+	ProviderTemperature    float64                `json:"provider_temperature"`
+	ProviderMaxTokens      int                    `json:"provider_max_tokens"`
+	ProviderTopK           int                    `json:"provider_top_k"`
+	MaxContextTokens       int                    `json:"max_context_tokens"` // max tokens for context trimming
+	LogLevel               string                 `json:"log_level"`          // debug, info, warn, error
+	DebugImmediateShutdown bool                   `json:"debug_immediate_shutdown"`
 }
 
 type ServerMode string
