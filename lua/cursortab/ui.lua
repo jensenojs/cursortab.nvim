@@ -743,10 +743,8 @@ local function show_cursor_prediction(line_num)
 			focusable = false,
 		})
 
-		vim.api.nvim_buf_set_extmark(absolute_jump_buf, daemon.get_namespace_id(), 0, 0, {
-			end_col = -1,
-			hl_group = "cursortabhl_jump_text",
-		})
+		-- Set window background to match cursortabhl_jump_text highlight
+		vim.api.nvim_set_option_value("winhighlight", "Normal:cursortabhl_jump_text", { win = absolute_jump_win })
 	end
 end
 
