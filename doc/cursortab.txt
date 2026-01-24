@@ -1,0 +1,256 @@
+*cursortab.txt*  AI-powered code completion for Neovim
+
+Author: Leo
+License: MIT
+
+==============================================================================
+CONTENTS                                                   *cursortab-contents*
+
+  1. Introduction ..................................... |cursortab-introduction|
+  2. Setup ............................................ |cursortab-setup|
+  3. Configuration .................................... |cursortab-config|
+  4. Commands ......................................... |cursortab-commands|
+  5. Architecture ..................................... |cursortab-architecture|
+
+==============================================================================
+INTRODUCTION                                           *cursortab-introduction*
+
+cursortab.nvim is an AI-powered code completion plugin with a hybrid Lua/Go
+architecture. It provides intelligent code completions with support for
+multi-stage edits and cursor prediction.
+
+==============================================================================
+SETUP                                                         *cursortab-setup*
+
+Using lazy.nvim: >lua
+
+  {
+    "leonardcser/cursortab.nvim",
+    build = "cd server && go build",
+    config = function()
+      require("cursortab").setup({
+        -- your config here
+      })
+    end,
+  }
+<
+
+==============================================================================
+CONFIGURATION                                                *cursortab-config*
+
+The configuration uses a nested structure for better organization and
+maintainability.
+
+Full configuration with defaults: >lua
+
+  require("cursortab").setup({
+    enabled = true,
+    log_level = "info",  -- "debug", "info", "warn", "error"
+
+    ui = {
+      colors = {
+        deletion = "#4f2f2f",
+        addition = "#394f2f",
+        modification = "#282e38",
+        completion = "#80899c",
+      },
+      jump = {
+        symbol = "",
+        text = " TAB ",
+        show_distance = true,
+        bg_color = "#373b45",
+        fg_color = "#bac1d1",
+      },
+    },
+
+    behavior = {
+      idle_completion_delay = 50,   -- ms, -1 to disable
+      text_change_debounce = 50,    -- ms
+      cursor_prediction = {
+        enabled = true,
+        auto_advance = true,
+        dist_threshold = 2,
+      },
+    },
+
+    provider = {
+      type = "autocomplete",        -- "autocomplete", "sweep", "zeta"
+      url = "http://localhost:8000",
+      model = "autocomplete",
+      temperature = 0.0,
+      max_tokens = 256,
+      top_k = 50,
+      completion_timeout = 5000,    -- ms
+      max_context_tokens = 512,
+      max_diff_history_tokens = 512,
+    },
+
+    debug = {
+      immediate_shutdown = false,
+    },
+  })
+<
+
+------------------------------------------------------------------------------
+UI OPTIONS                                                *cursortab-config-ui*
+
+ui.colors                                          *cursortab-config-ui-colors*
+
+  `deletion`      Background color for deleted text highlights.
+  `addition`      Background color for added text highlights.
+  `modification`  Background color for modified text highlights.
+  `completion`    Foreground color for completion text.
+
+ui.jump                                              *cursortab-config-ui-jump*
+
+  `symbol`        Symbol shown before jump indicator (default: "").
+  `text`          Text shown in jump indicator (default: " TAB ").
+  `show_distance` Show line distance for off-screen jumps (default: true).
+  `bg_color`      Background color for jump indicator.
+  `fg_color`      Foreground color for jump indicator.
+
+------------------------------------------------------------------------------
+BEHAVIOR OPTIONS                                    *cursortab-config-behavior*
+
+  `idle_completion_delay`
+      Delay in milliseconds after being idle in normal mode before triggering
+      completion. Set to -1 to disable idle completions.
+
+  `text_change_debounce`
+      Debounce in milliseconds after text changes before triggering completion.
+
+behavior.cursor_prediction            *cursortab-config-behavior-cursor-prediction*
+
+  `enabled`
+      Show jump indicators after completions (default: true).
+
+  `auto_advance`
+      When a completion results in no code changes, show a cursor jump to the
+      last line of the completion (default: true).
+
+  `dist_threshold`
+      Minimum lines apart to show a cursor jump between completions. When
+      completions span multiple distant locations, this controls when to show
+      a jump indicator instead of applying changes directly. Set to 0 to
+      disable (default: 2).
+
+------------------------------------------------------------------------------
+PROVIDER OPTIONS                                    *cursortab-config-provider*
+
+  `type`
+      Provider type: "autocomplete", "sweep", or "zeta".
+
+  `url`
+      URL of the provider server.
+
+  `model`
+      Model name to use.
+
+  `temperature`
+      Sampling temperature for generation.
+
+  `max_tokens`
+      Maximum tokens to generate (autocomplete only).
+
+  `top_k`
+      Top-k sampling parameter.
+
+  `completion_timeout`
+      Timeout in milliseconds for completion requests.
+
+  `max_context_tokens`
+      Maximum context tokens to include around the cursor position. This
+      controls how much surrounding code is sent as context, not the total
+      tokens sent to the provider endpoint. Set to 0 for no limit.
+
+  `max_diff_history_tokens`
+      Maximum tokens for diff history context. Set to 0 for no limit.
+
+------------------------------------------------------------------------------
+DEBUG OPTIONS                                          *cursortab-config-debug*
+
+  `immediate_shutdown`
+      Shutdown daemon immediately when no clients are connected. Useful for
+      development.
+
+------------------------------------------------------------------------------
+DEPRECATED OPTIONS                               *cursortab-config-deprecated*
+
+The following flat configuration keys are deprecated but still supported.
+They will be automatically migrated to the new nested structure:
+
+  Old Key                    New Path ~
+  `deletion_color`             ui.colors.deletion
+  `addition_color`             ui.colors.addition
+  `modification_color`         ui.colors.modification
+  `completion_color`           ui.colors.completion
+  `jump_symbol`                ui.jump.symbol
+  `jump_text`                  ui.jump.text
+  `jump_show_distance`         ui.jump.show_distance
+  `jump_bg_color`              ui.jump.bg_color
+  `jump_fg_color`              ui.jump.fg_color
+  `idle_completion_delay`      behavior.idle_completion_delay
+  `text_changed_debounce`      behavior.text_change_debounce
+  `completion_timeout`         provider.completion_timeout
+  `cursor_prediction`          behavior.cursor_prediction
+  `provider`                   provider.type
+  `provider_url`               provider.url
+  `provider_model`             provider.model
+  `provider_temperature`       provider.temperature
+  `provider_max_tokens`        provider.max_tokens
+  `provider_top_k`             provider.top_k
+  `max_context_tokens`         provider.max_context_tokens
+  `max_diff_history_tokens`    provider.max_diff_history_tokens
+  `debug_immediate_shutdown`   debug.immediate_shutdown
+
+The following options have been removed and no longer have any effect:
+
+  `event_debounce`             Removed (hardcoded internally)
+  `debug_color`                Removed (unused)
+
+==============================================================================
+COMMANDS                                                   *cursortab-commands*
+
+:CursortabToggle                                            *:CursortabToggle*
+    Toggle cursortab functionality on/off.
+
+:CursortabStatus                                            *:CursortabStatus*
+    Show daemon and connection status.
+
+:CursortabShowLog                                          *:CursortabShowLog*
+    Open the daemon log file in a scratch buffer.
+
+:CursortabClearLog                                        *:CursortabClearLog*
+    Clear the daemon log file.
+
+:CursortabRestart                                          *:CursortabRestart*
+    Stop and restart the daemon process.
+
+==============================================================================
+ARCHITECTURE                                           *cursortab-architecture*
+
+cursortab.nvim uses a hybrid Lua/Go architecture:
+
+  Lua Plugin (lua/cursortab/)
+      Handles UI rendering, keybindings, and Neovim event subscriptions.
+      Communicates with the daemon via Neovim RPC.
+
+  Go Daemon (server/)
+      Runs as a separate process, communicating via Unix socket.
+      Manages the completion state machine and AI provider calls.
+
+Communication flow: >
+
+  Neovim Events ---> Lua Plugin ---> RPC ---> Go Daemon ---> AI Provider
+                          |                        |
+                          +<-- UI Rendering <------+
+                                              Completion Response
+<
+
+State machine: >
+
+  Idle ---> PendingCompletion ---> HasCompletion ---> HasCursorTarget
+<
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

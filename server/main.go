@@ -9,28 +9,45 @@ import (
 	"syscall"
 )
 
+// CursorPredictionConfig holds cursor prediction settings
 type CursorPredictionConfig struct {
 	Enabled       bool `json:"enabled"`
 	AutoAdvance   bool `json:"auto_advance"`
 	DistThreshold int  `json:"dist_threshold"`
 }
 
+// BehaviorConfig holds timing and behavior settings
+type BehaviorConfig struct {
+	IdleCompletionDelay int                    `json:"idle_completion_delay"` // in milliseconds
+	TextChangeDebounce  int                    `json:"text_change_debounce"`  // in milliseconds
+	CursorPrediction    CursorPredictionConfig `json:"cursor_prediction"`
+}
+
+// ProviderConfig holds provider-specific settings
+type ProviderConfig struct {
+	Type                 string  `json:"type"` // "autocomplete", "sweep", "zeta"
+	URL                  string  `json:"url"`
+	Model                string  `json:"model"`
+	Temperature          float64 `json:"temperature"`
+	MaxTokens            int     `json:"max_tokens"`
+	TopK                 int     `json:"top_k"`
+	CompletionTimeout    int     `json:"completion_timeout"` // in milliseconds
+	MaxContextTokens     int     `json:"max_context_tokens"`
+	MaxDiffHistoryTokens int     `json:"max_diff_history_tokens"`
+}
+
+// DebugConfig holds debug settings
+type DebugConfig struct {
+	ImmediateShutdown bool `json:"immediate_shutdown"`
+}
+
+// Config is the main configuration structure
 type Config struct {
-	NsID                   int                    `json:"ns_id"`
-	Provider               string                 `json:"provider"`
-	IdleCompletionDelay    int                    `json:"idle_completion_delay"` // in milliseconds
-	TextChangeDebounce     int                    `json:"text_change_debounce"`  // in milliseconds
-	CompletionTimeout      int                    `json:"completion_timeout"`    // in milliseconds
-	CursorPrediction       CursorPredictionConfig `json:"cursor_prediction"`
-	ProviderURL            string                 `json:"provider_url"`
-	ProviderModel          string                 `json:"provider_model"`
-	ProviderTemperature    float64                `json:"provider_temperature"`
-	ProviderMaxTokens      int                    `json:"provider_max_tokens"`
-	ProviderTopK           int                    `json:"provider_top_k"`
-	MaxContextTokens       int                    `json:"max_context_tokens"`      // max tokens for content around cursor
-	MaxDiffHistoryTokens   int                    `json:"max_diff_history_tokens"` // max tokens for diff history
-	LogLevel               string                 `json:"log_level"`               // debug, info, warn, error
-	DebugImmediateShutdown bool                   `json:"debug_immediate_shutdown"`
+	NsID     int            `json:"ns_id"`
+	LogLevel string         `json:"log_level"`
+	Behavior BehaviorConfig `json:"behavior"`
+	Provider ProviderConfig `json:"provider"`
+	Debug    DebugConfig    `json:"debug"`
 }
 
 type ServerMode string

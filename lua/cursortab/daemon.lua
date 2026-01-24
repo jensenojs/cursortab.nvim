@@ -36,27 +36,34 @@ local function start_daemon()
 		return false
 	end
 
-	-- Create JSON configuration
+	-- Create JSON configuration (matches Go Config struct)
+	-- Note: UI config is Lua-only (for highlights), not sent to Go daemon
 	local cfg = config.get()
 	local json_config = vim.json.encode({
 		ns_id = ns_id,
-		provider = cfg.provider,
-		idle_completion_delay = cfg.idle_completion_delay,
-		text_change_debounce = cfg.text_changed_debounce,
-		completion_timeout = cfg.completion_timeout,
-		debug_immediate_shutdown = cfg.debug_immediate_shutdown,
-		max_context_tokens = cfg.max_context_tokens,
-		max_diff_history_tokens = cfg.max_diff_history_tokens,
-		provider_url = cfg.provider_url,
-		provider_model = cfg.provider_model,
-		provider_temperature = cfg.provider_temperature,
-		provider_max_tokens = cfg.provider_max_tokens,
-		provider_top_k = cfg.provider_top_k,
 		log_level = cfg.log_level,
-		cursor_prediction = {
-			enabled = cfg.cursor_prediction.enabled,
-			auto_advance = cfg.cursor_prediction.auto_advance,
-			dist_threshold = cfg.cursor_prediction.dist_threshold,
+		behavior = {
+			idle_completion_delay = cfg.behavior.idle_completion_delay,
+			text_change_debounce = cfg.behavior.text_change_debounce,
+			cursor_prediction = {
+				enabled = cfg.behavior.cursor_prediction.enabled,
+				auto_advance = cfg.behavior.cursor_prediction.auto_advance,
+				dist_threshold = cfg.behavior.cursor_prediction.dist_threshold,
+			},
+		},
+		provider = {
+			type = cfg.provider.type,
+			url = cfg.provider.url,
+			model = cfg.provider.model,
+			temperature = cfg.provider.temperature,
+			max_tokens = cfg.provider.max_tokens,
+			top_k = cfg.provider.top_k,
+			completion_timeout = cfg.provider.completion_timeout,
+			max_context_tokens = cfg.provider.max_context_tokens,
+			max_diff_history_tokens = cfg.provider.max_diff_history_tokens,
+		},
+		debug = {
+			immediate_shutdown = cfg.debug.immediate_shutdown,
 		},
 	})
 
@@ -124,8 +131,8 @@ function daemon.send_event(event_name)
 	if event_debounce_timer then
 		vim.fn.timer_stop(event_debounce_timer)
 	end
-	local cfg = config.get()
-	event_debounce_timer = vim.fn.timer_start(cfg.event_debounce, function()
+	local event_debounce_ms = 10 -- hardcoded internal value
+	event_debounce_timer = vim.fn.timer_start(event_debounce_ms, function()
 		send_rpc_event(event_name)
 	end)
 end

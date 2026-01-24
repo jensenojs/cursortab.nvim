@@ -5,7 +5,7 @@ supports custom models and models form Zeta (Zed) and SweepAI.
 
 > [!WARNING]
 >
-> **This is an early-stage, alpha project.** Expect bugs, incomplete features,
+> **This is an early-stage, beta project.** Expect bugs, incomplete features,
 > and breaking changes.
 
 <p align="center">
@@ -42,48 +42,58 @@ use {
 
 ```lua
 require("cursortab").setup({
-  -- CUSTOMIZATION
-  deletion_color = "#4f2f2f",        -- Background color for deletions
-  addition_color = "#394f2f",        -- Background color for additions
-  modification_color = "#282e38",    -- Background color for modifications
-  completion_color = "#80899c",      -- Foreground color for completions
-  jump_symbol = "",                 -- Symbol shown for jump points
-  jump_text = " TAB ",               -- Text displayed after jump symbol
-  jump_show_distance = true,         -- Show line distance for off-screen jumps
-  jump_bg_color = "#373b45",         -- Jump text background color
-  jump_fg_color = "#bac1d1",         -- Jump text foreground color
+  enabled = true,
+  log_level = "info",  -- "debug", "info", "warn", "error"
 
-  -- OPTIONS
-  enabled = true,                    -- Whether the plugin is enabled on startup
-  provider = "autocomplete",         -- Provider: "autocomplete", "sweep", or "zeta"
-  idle_completion_delay = 50,        -- Delay in ms after being idle to trigger completion (-1 to disable)
-  text_changed_debounce = 50,        -- Debounce in ms after text changed to trigger completion
-  completion_timeout = 5000,         -- Timeout in ms for completion requests
-  cursor_prediction = {
-    enabled = true,        -- Show jump indicators after completions
-    auto_advance = true,   -- On no-op (no changes), jump to last line and retrigger
-    dist_threshold = 2,    -- Lines apart to trigger staging (0 to disable)
+  ui = {
+    colors = {
+      deletion = "#4f2f2f",      -- Background color for deletions
+      addition = "#394f2f",      -- Background color for additions
+      modification = "#282e38",  -- Background color for modifications
+      completion = "#80899c",    -- Foreground color for completions
+    },
+    jump = {
+      symbol = "",              -- Symbol shown for jump points
+      text = " TAB ",            -- Text displayed after jump symbol
+      show_distance = true,      -- Show line distance for off-screen jumps
+      bg_color = "#373b45",      -- Jump text background color
+      fg_color = "#bac1d1",      -- Jump text foreground color
+    },
   },
 
-  -- CONTEXT OPTIONS
-  -- Controls window size around cursor. For sweep/zeta, also controls max generation tokens
-  -- since these providers regenerate the entire window.
-  max_context_tokens = 2048,         -- Max tokens for content window (0 = no limit)
-  max_diff_history_tokens = 512,     -- Max tokens for diff history (0 = no limit)
+  behavior = {
+    idle_completion_delay = 50,  -- Delay in ms after idle to trigger completion (-1 to disable)
+    text_change_debounce = 50,   -- Debounce in ms after text change to trigger completion
+    cursor_prediction = {
+      enabled = true,            -- Show jump indicators after completions
+      auto_advance = true,       -- When no changes, show cursor jump to last line
+      dist_threshold = 2,        -- Min lines apart to show cursor jump (0 to disable)
+    },
+  },
 
-  -- PROVIDER OPTIONS
-  provider_url = "http://localhost:8000",  -- URL of the provider server
-  provider_model = "autocomplete",         -- Model name
-  provider_temperature = 0.0,              -- Sampling temperature
-  provider_max_tokens = 256,               -- Max tokens to generate (autocomplete only)
-  provider_top_k = 50,                     -- Top-k sampling
+  provider = {
+    type = "autocomplete",             -- Provider: "autocomplete", "sweep", or "zeta"
+    url = "http://localhost:8000",     -- URL of the provider server
+    model = "autocomplete",            -- Model name
+    temperature = 0.0,                 -- Sampling temperature
+    max_tokens = 256,                  -- Max tokens to generate (autocomplete only)
+    top_k = 50,                        -- Top-k sampling
+    completion_timeout = 5000,         -- Timeout in ms for completion requests
+    max_context_tokens = 512,          -- Max context tokens around cursor (0 = no limit)
+    max_diff_history_tokens = 512,     -- Max tokens for diff history (0 = no limit)
+  },
+
+  debug = {
+    immediate_shutdown = false,  -- Shutdown daemon immediately when no clients
+  },
 })
 ```
+
+For detailed configuration documentation, see `:help cursortab-config`.
 
 ### Providers
 
 The plugin supports three AI provider backends: Autocomplete, Sweep, and Zeta.
-Configuration options for all providers use the unified `provider_*` settings.
 
 #### Autocomplete Provider (Default)
 
@@ -104,9 +114,11 @@ End-of-line completion using OpenAI-compatible API endpoints.
 
 ```lua
 require("cursortab").setup({
-  provider = "autocomplete",
-  provider_url = "http://localhost:8000",
-  provider_model = "autocomplete",
+  provider = {
+    type = "autocomplete",
+    url = "http://localhost:8000",
+    model = "autocomplete",
+  },
 })
 ```
 
@@ -124,9 +136,11 @@ Local model support with OpenAI-compatible API format.
 
 ```lua
 require("cursortab").setup({
-  provider = "zeta",
-  provider_url = "http://localhost:8000",
-  provider_model = "zeta",
+  provider = {
+    type = "zeta",
+    url = "http://localhost:8000",
+    model = "zeta",
+  },
 })
 ```
 
@@ -136,7 +150,8 @@ Sweep Next-Edit 1.5B model for fast, accurate next-edit predictions.
 
 **Features:**
 
-- Multi-line completions with token-based context (sends full file for small files, trimmed around cursor for large files)
+- Multi-line completions with token-based context (sends full file for small
+  files, trimmed around cursor for large files)
 - Fast inference (~500ms on CPU, <100ms on GPU)
 - Outperforms larger models on next-edit accuracy
 - Open-source weights available
@@ -152,9 +167,11 @@ Sweep Next-Edit 1.5B model for fast, accurate next-edit predictions.
 
 ```lua
 require("cursortab").setup({
-  provider = "sweep",
-  provider_url = "http://localhost:8000",
-  provider_model = "sweep-next-edit-1.5b",
+  provider = {
+    type = "sweep",
+    url = "http://localhost:8000",
+    model = "sweep-next-edit-1.5b",
+  },
 })
 ```
 
@@ -209,22 +226,43 @@ To run tests:
 cd server && go test ./...
 ```
 
-### Internal Configuration Options
+## FAQ
 
-Advanced configuration options for development and debugging:
+<details>
+<summary>Which provider should I use?</summary>
 
-```lua
-require("cursortab").setup({
-  -- INTERNAL OPTIONS
-  log_level = "info",                 -- Log level: "debug", "info", "warn", "error"
-  event_debounce = 10,                -- Debounce in ms for events
-  debug_immediate_shutdown = false,   -- Shutdown daemon immediately when no clients are connected
-  debug_color = "#cccc55",            -- Foreground color for debug highlights (currently not used)
-})
-```
+- **Autocomplete**: End-of-line completions only. No multi-line or cursor
+  prediction support.
+- **Zeta** and **Sweep**: Both support multi-line completions and cursor
+  predictions. Sweep generally produces better results.
 
-These options are primarily for plugin development and debugging. Most users
-should not need to modify them.
+For the best experience, use **Sweep** with the `sweep-next-edit-1.5b` model.
+
+</details>
+
+<details>
+<summary>Why are completions slow?</summary>
+
+1. Use a smaller or more quantized model (e.g., Q4 instead of Q8)
+2. Decrease `provider.max_context_tokens` to send less context
+
+</details>
+
+<details>
+<summary>Why are completions not working?</summary>
+
+1. Update to the latest version and restart the daemon with `:CursortabRestart`
+2. Increase `provider.completion_timeout` (default: 5000ms) to 10000 or more if your model is slow
+
+</details>
+
+<details>
+<summary>How do I update the plugin?</summary>
+
+Use your Neovim plugin manager to pull the latest changes, then run
+`:CursortabRestart` to restart the daemon.
+
+</details>
 
 ## Contributing
 

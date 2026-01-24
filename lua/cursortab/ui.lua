@@ -695,8 +695,8 @@ local function show_cursor_prediction(line_num)
 		jump_text_extmark_id =
 			vim.api.nvim_buf_set_extmark(current_buf, daemon.get_namespace_id(), line_num - 1, line_length, {
 				virt_text = {
-					{ " " .. cfg.jump_symbol, "cursortabhl_jump_symbol" },
-					{ cfg.jump_text, "cursortabhl_jump_text" },
+					{ " " .. cfg.ui.jump.symbol, "cursortabhl_jump_symbol" },
+					{ cfg.ui.jump.text, "cursortabhl_jump_text" },
 				},
 				virt_text_pos = "overlay",
 				hl_mode = "combine",
@@ -717,8 +717,8 @@ local function show_cursor_prediction(line_num)
 
 		-- Build the display text
 		---@type string
-		local display_text = cfg.jump_text
-		if cfg.jump_show_distance then
+		local display_text = cfg.ui.jump.text
+		if cfg.ui.jump.show_distance then
 			display_text = display_text .. "(" .. distance .. " lines) "
 		end
 

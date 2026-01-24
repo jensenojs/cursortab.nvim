@@ -34,14 +34,14 @@ type Daemon struct {
 
 func NewDaemon(config Config) (*Daemon, error) {
 	provider, err := provider.NewProvider(
-		types.ProviderType(config.Provider),
+		types.ProviderType(config.Provider.Type),
 		&types.ProviderConfig{
-			MaxTokens:           config.MaxContextTokens,
-			ProviderURL:         config.ProviderURL,
-			ProviderModel:       config.ProviderModel,
-			ProviderTemperature: config.ProviderTemperature,
-			ProviderMaxTokens:   config.ProviderMaxTokens,
-			ProviderTopK:        config.ProviderTopK,
+			MaxTokens:           config.Provider.MaxContextTokens,
+			ProviderURL:         config.Provider.URL,
+			ProviderModel:       config.Provider.Model,
+			ProviderTemperature: config.Provider.Temperature,
+			ProviderMaxTokens:   config.Provider.MaxTokens,
+			ProviderTopK:        config.Provider.TopK,
 		},
 	)
 	if err != nil {
@@ -49,16 +49,16 @@ func NewDaemon(config Config) (*Daemon, error) {
 	}
 
 	eng, err := engine.NewEngine(provider, engine.EngineConfig{
-		NsID:                     config.NsID,
-		CompletionTimeout:        time.Duration(config.CompletionTimeout) * time.Millisecond,
-		IdleCompletionDelay:      time.Duration(config.IdleCompletionDelay) * time.Millisecond,
-		TextChangeDebounce:       time.Duration(config.TextChangeDebounce) * time.Millisecond,
+		NsID:                config.NsID,
+		CompletionTimeout:   time.Duration(config.Provider.CompletionTimeout) * time.Millisecond,
+		IdleCompletionDelay: time.Duration(config.Behavior.IdleCompletionDelay) * time.Millisecond,
+		TextChangeDebounce:  time.Duration(config.Behavior.TextChangeDebounce) * time.Millisecond,
 		CursorPrediction: engine.CursorPredictionConfig{
-			Enabled:       config.CursorPrediction.Enabled,
-			AutoAdvance:   config.CursorPrediction.AutoAdvance,
-			DistThreshold: config.CursorPrediction.DistThreshold,
+			Enabled:       config.Behavior.CursorPrediction.Enabled,
+			AutoAdvance:   config.Behavior.CursorPrediction.AutoAdvance,
+			DistThreshold: config.Behavior.CursorPrediction.DistThreshold,
 		},
-		MaxDiffTokens:            config.MaxDiffHistoryTokens,
+		MaxDiffTokens: config.Provider.MaxDiffHistoryTokens,
 	})
 	if err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 
 func (d *Daemon) monitorIdleShutdown() {
 	// In debug mode, shut down immediately when no clients are connected
-	if d.config.DebugImmediateShutdown {
+	if d.config.Debug.ImmediateShutdown {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 
