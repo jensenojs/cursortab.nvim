@@ -131,24 +131,24 @@ end
 function M.restart()
 	vim.notify("Restarting cursortab daemon...", vim.log.levels.INFO)
 
-	-- Stop existing daemon
-	local success, message = daemon.stop_daemon()
-	if success then
-		vim.notify(message, vim.log.levels.INFO)
-	else
-		vim.notify("Warning: " .. message, vim.log.levels.WARN)
-	end
+	-- Clear any existing completions first
+	events.clear_all_completions()
 
-	-- Wait a moment for cleanup
+	-- Stop existing daemon (this now handles all cleanup reliably)
+	local _, stop_message = daemon.stop_daemon()
+	vim.notify(stop_message, vim.log.levels.INFO)
+
+	-- Small delay to ensure cleanup is complete
 	vim.defer_fn(function()
-		-- Clear any existing completions
-		events.clear_all_completions()
+		-- Explicitly start the daemon
+		local start_success = daemon.force_start()
 
-		-- The daemon will be restarted automatically on the next event
-		-- due to the lazy initialization in the daemon module
-
-		vim.notify("Cursortab daemon restart completed", vim.log.levels.INFO)
-	end, 500)
+		if start_success then
+			vim.notify("Cursortab daemon restarted successfully", vim.log.levels.INFO)
+		else
+			vim.notify("Failed to start cursortab daemon", vim.log.levels.ERROR)
+		end
+	end, 200)
 end
 
 ---Setup cursortab with user configuration

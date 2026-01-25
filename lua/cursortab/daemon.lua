@@ -12,6 +12,12 @@ local ns_id = vim.api.nvim_create_namespace("cursortab")
 local event_debounce_timer = nil
 local is_enabled = true
 
+-- Check if process with given PID is running
+local function is_process_running(pid)
+	vim.fn.system("kill -0 " .. pid .. " 2>/dev/null")
+	return vim.v.shell_error == 0
+end
+
 -- Start the daemon process
 local function start_daemon()
 	local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h")
@@ -21,6 +27,7 @@ local function start_daemon()
 	end
 	local binary_path = plugin_dir .. "/server/" .. binary_name
 	local socket_path = plugin_dir .. "/server/cursortab.sock"
+	local pid_path = plugin_dir .. "/server/cursortab.pid"
 
 	-- Check if binary exists
 	if vim.fn.executable(binary_path) == 0 then
@@ -70,8 +77,36 @@ local function start_daemon()
 	local env = vim.fn.environ()
 	env.CURSORTAB_CONFIG = json_config
 
-	-- Start daemon if socket doesn't exist
+	-- Check if we need to start the daemon
+	local need_daemon_start = false
+
 	if vim.fn.filereadable(socket_path) == 0 then
+		-- No socket, need to start daemon
+		need_daemon_start = true
+	else
+		-- Socket exists, check if daemon is actually running
+		local daemon_running = false
+		if vim.fn.filereadable(pid_path) == 1 then
+			local pid_content = vim.fn.readfile(pid_path)
+			if #pid_content > 0 then
+				local pid = tonumber(pid_content[1])
+				if pid then
+					daemon_running = is_process_running(pid)
+				end
+			end
+		end
+
+		if not daemon_running then
+			-- Stale socket, clean up and start fresh
+			vim.fn.delete(socket_path)
+			if vim.fn.filereadable(pid_path) == 1 then
+				vim.fn.delete(pid_path)
+			end
+			need_daemon_start = true
+		end
+	end
+
+	if need_daemon_start then
 		vim.fn.jobstart({ binary_path, "--daemon" }, {
 			env = env,
 			detach = true,
@@ -199,46 +234,90 @@ function daemon.get_channel_status()
 	}
 end
 
+-- Clean up stale socket and pid files
+local function cleanup_stale_files()
+	local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h")
+	local socket_path = plugin_dir .. "/server/cursortab.sock"
+	local pid_path = plugin_dir .. "/server/cursortab.pid"
+
+	-- Remove socket file if it exists
+	if vim.fn.filereadable(socket_path) == 1 then
+		vim.fn.delete(socket_path)
+	end
+
+	-- Remove pid file if it exists
+	if vim.fn.filereadable(pid_path) == 1 then
+		vim.fn.delete(pid_path)
+	end
+end
+
 -- Stop daemon process
 function daemon.stop_daemon()
 	local plugin_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h")
 	local pid_path = plugin_dir .. "/server/cursortab.pid"
+	local socket_path = plugin_dir .. "/server/cursortab.sock"
 
+	-- Reset channel regardless of outcome
+	chan = nil
+
+	-- If no PID file, just clean up any stale socket
 	if vim.fn.filereadable(pid_path) == 0 then
-		return false, "PID file not found"
+		if vim.fn.filereadable(socket_path) == 1 then
+			vim.fn.delete(socket_path)
+			return true, "Cleaned up stale socket (no PID file)"
+		end
+		return true, "Daemon not running (no PID file)"
 	end
 
 	local pid_content = vim.fn.readfile(pid_path)
 	if #pid_content == 0 then
-		return false, "PID file is empty"
+		cleanup_stale_files()
+		return true, "Cleaned up stale files (empty PID file)"
 	end
 
 	local pid = tonumber(pid_content[1])
 	if not pid then
-		return false, "Invalid PID in file"
+		cleanup_stale_files()
+		return true, "Cleaned up stale files (invalid PID)"
+	end
+
+	-- Check if process is actually running
+	if not is_process_running(pid) then
+		cleanup_stale_files()
+		return true, "Cleaned up stale files (process not running)"
 	end
 
 	-- Send TERM signal to daemon
 	vim.fn.system("kill " .. pid .. " 2>/dev/null")
-	local success = vim.v.shell_error == 0
+	local kill_sent = vim.v.shell_error == 0
 
-	if success then
-		-- Reset channel
-		chan = nil
-
-		-- Wait for socket to be removed (daemon cleanup)
-		local socket_path = plugin_dir .. "/server/cursortab.sock"
-		for _ = 1, 50 do
-			vim.wait(100)
-			if vim.fn.filereadable(socket_path) == 0 then
-				break
-			end
-		end
-
-		return true, "Daemon stopped successfully"
-	else
-		return false, "Failed to stop daemon (process may not exist)"
+	if not kill_sent then
+		cleanup_stale_files()
+		return true, "Cleaned up stale files (could not signal process)"
 	end
+
+	-- Wait for socket to be removed (daemon cleanup)
+	for _ = 1, 50 do
+		vim.wait(100)
+		if vim.fn.filereadable(socket_path) == 0 then
+			return true, "Daemon stopped successfully"
+		end
+	end
+
+	-- Process didn't terminate gracefully, send SIGKILL
+	if is_process_running(pid) then
+		vim.fn.system("kill -9 " .. pid .. " 2>/dev/null")
+		-- Brief wait for forced termination
+		vim.wait(100)
+	end
+
+	cleanup_stale_files()
+	return true, "Daemon stopped (forced kill after timeout)"
+end
+
+-- Force start daemon (for use after stop_daemon)
+function daemon.force_start()
+	return start_daemon()
 end
 
 return daemon
