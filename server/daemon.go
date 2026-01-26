@@ -22,8 +22,8 @@ import (
 
 type Daemon struct {
 	config      Config
-	provider    types.Provider
-	buffer      *buffer.Buffer
+	provider    engine.Provider
+	buffer      *buffer.NvimBuffer
 	engine      *engine.Engine
 	listener    net.Listener
 	socketPath  string
@@ -64,7 +64,7 @@ func NewDaemon(config Config) (*Daemon, error) {
 			DistThreshold: config.Behavior.CursorPrediction.DistThreshold,
 		},
 		MaxDiffTokens: config.Provider.MaxDiffHistoryTokens,
-	})
+	}, engine.SystemClock)
 	if err != nil {
 		return nil, err
 	}

@@ -1,10 +1,8 @@
 package engine
 
-import "time"
-
 func (e *Engine) startIdleTimer() {
 	e.stopIdleTimer()
-	e.idleTimer = time.AfterFunc(e.config.IdleCompletionDelay, func() {
+	e.idleTimer = e.clock.AfterFunc(e.config.IdleCompletionDelay, func() {
 		// Check if engine is stopped before sending event
 		e.mu.RLock()
 		stopped := e.stopped
@@ -36,7 +34,7 @@ func (e *Engine) resetIdleTimer() {
 
 func (e *Engine) startTextChangeTimer() {
 	e.stopTextChangeTimer()
-	e.textChangeTimer = time.AfterFunc(e.config.TextChangeDebounce, func() {
+	e.textChangeTimer = e.clock.AfterFunc(e.config.TextChangeDebounce, func() {
 		// Check if engine is stopped before sending event
 		e.mu.RLock()
 		stopped := e.stopped

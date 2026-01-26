@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// Provider implements the types.Provider interface for autocomplete
+// Provider implements the engine.Provider interface for autocomplete
 type Provider struct {
 	config      *types.ProviderConfig
 	httpClient  *http.Client
@@ -72,7 +72,7 @@ func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 	}, nil
 }
 
-// GetCompletion implements types.Provider.GetCompletion for autocomplete
+// GetCompletion implements engine.Provider.GetCompletion for autocomplete
 // This provider only does end-of-line completion without cursor predictions
 func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
 	// Build the prompt from the file content up to the cursor position

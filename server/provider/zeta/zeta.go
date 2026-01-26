@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Provider implements the types.Provider interface for Zeta (vLLM with OpenAI-style API)
+// Provider implements the engine.Provider interface for Zeta (vLLM with OpenAI-style API)
 type Provider struct {
 	config      *types.ProviderConfig
 	client      *openai.Client
@@ -32,7 +32,7 @@ func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 	}, nil
 }
 
-// GetCompletion implements types.Provider.GetCompletion for Zeta
+// GetCompletion implements engine.Provider.GetCompletion for Zeta
 // This provider supports multi-line completions using special tokens
 // Uses streaming to enable early cancellation when enough lines are received
 func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {

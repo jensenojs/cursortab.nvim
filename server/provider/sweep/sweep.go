@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Provider implements the types.Provider interface for Sweep Next-Edit model
+// Provider implements the engine.Provider interface for Sweep Next-Edit model
 // Uses the Qwen2.5-Coder pretrained format with <|file_sep|> tokens
 type Provider struct {
 	config      *types.ProviderConfig
@@ -33,7 +33,7 @@ func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 	}, nil
 }
 
-// GetCompletion implements types.Provider.GetCompletion for Sweep
+// GetCompletion implements engine.Provider.GetCompletion for Sweep
 // Uses the Sweep Next-Edit format with <|file_sep|> tokens
 // Uses streaming to enable early cancellation when enough lines are received
 func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {

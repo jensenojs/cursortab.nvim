@@ -54,14 +54,15 @@ type Engine struct {
 	WorkspacePath string
 	WorkspaceID   string
 
-	provider        types.Provider
-	buffer          buffer.Client
+	provider Provider
+	buffer   Buffer
+	clock    Clock
 	state           state
 	ctx             context.Context
 	currentCancel   context.CancelFunc
 	prefetchCancel  context.CancelFunc
-	idleTimer       *time.Timer
-	textChangeTimer *time.Timer
+	idleTimer       Timer
+	textChangeTimer Timer
 	mu              sync.RWMutex
 	eventChan       chan Event
 
@@ -94,7 +95,7 @@ type Engine struct {
 	fileStateStore map[string]*FileState
 }
 
-func NewEngine(provider types.Provider, buf buffer.Client, config EngineConfig) (*Engine, error) {
+func NewEngine(provider Provider, buf Buffer, config EngineConfig, clock Clock) (*Engine, error) {
 	workspacePath, err := os.Getwd()
 	if err != nil {
 		logger.Warn("error getting current directory, using home: %v", err)
@@ -107,6 +108,7 @@ func NewEngine(provider types.Provider, buf buffer.Client, config EngineConfig) 
 		WorkspaceID:            workspaceID,
 		provider:               provider,
 		buffer:                 buf,
+		clock:                  clock,
 		state:                  stateIdle,
 		ctx:                    nil,
 		eventChan:              make(chan Event, 100),
@@ -603,7 +605,7 @@ func (e *Engine) saveCurrentFileState() {
 		PreviousLines: copyLines(e.buffer.PreviousLines()),
 		DiffHistories: copyDiffs(e.buffer.DiffHistories()),
 		OriginalLines: copyLines(e.buffer.OriginalLines()),
-		LastAccessNs:  time.Now().UnixNano(),
+		LastAccessNs:  e.clock.Now().UnixNano(),
 		Version:       e.buffer.Version(),
 	}
 
@@ -624,7 +626,7 @@ func (e *Engine) handleFileSwitch(oldPath, newPath string, currentLines []string
 			PreviousLines: copyLines(e.buffer.PreviousLines()),
 			DiffHistories: copyDiffs(e.buffer.DiffHistories()),
 			OriginalLines: copyLines(e.buffer.OriginalLines()),
-			LastAccessNs:  time.Now().UnixNano(),
+			LastAccessNs:  e.clock.Now().UnixNano(),
 			Version:       e.buffer.Version(),
 		}
 		e.fileStateStore[oldPath] = state
@@ -635,7 +637,7 @@ func (e *Engine) handleFileSwitch(oldPath, newPath string, currentLines []string
 		if e.isFileStateValid(state, currentLines) {
 			// Restore the saved state
 			e.buffer.SetFileContext(state.PreviousLines, state.OriginalLines, state.DiffHistories)
-			state.LastAccessNs = time.Now().UnixNano()
+			state.LastAccessNs = e.clock.Now().UnixNano()
 			logger.Debug("restored file state for %s (version=%d, diffs=%d)", newPath, state.Version, len(state.DiffHistories))
 			return true
 		}

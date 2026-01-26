@@ -1,15 +1,17 @@
 package provider
 
 import (
+	"fmt"
+
+	"cursortab/engine"
 	"cursortab/provider/autocomplete"
 	"cursortab/provider/sweep"
 	"cursortab/provider/zeta"
 	"cursortab/types"
-	"fmt"
 )
 
 // NewProvider creates a new provider instance based on the type
-func NewProvider(providerType types.ProviderType, config *types.ProviderConfig) (types.Provider, error) {
+func NewProvider(providerType types.ProviderType, config *types.ProviderConfig) (engine.Provider, error) {
 	switch providerType {
 	case types.ProviderTypeZeta:
 		return zeta.NewProvider(config)

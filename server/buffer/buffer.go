@@ -13,14 +13,11 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
-// Compile-time interface check
-var _ Client = (*Buffer)(nil)
-
 type Config struct {
 	NsID int
 }
 
-type Buffer struct {
+type NvimBuffer struct {
 	client *nvim.Nvim // stored internally, set via SetClient
 
 	// Private state
@@ -50,8 +47,8 @@ type Buffer struct {
 	hasPending              bool
 }
 
-func New(config Config) *Buffer {
-	return &Buffer{
+func New(config Config) *NvimBuffer {
+	return &NvimBuffer{
 		lines:                   []string{},
 		row:                     1,
 		col:                     0,
@@ -72,35 +69,35 @@ func New(config Config) *Buffer {
 }
 
 // SetClient stores the nvim client for all buffer operations
-func (b *Buffer) SetClient(n *nvim.Nvim) {
+func (b *NvimBuffer) SetClient(n *nvim.Nvim) {
 	b.client = n
 }
 
-// Accessor methods implementing buffer.Client interface
+// Accessor methods implementing engine.Buffer interface
 
-func (b *Buffer) Lines() []string { return b.lines }
+func (b *NvimBuffer) Lines() []string { return b.lines }
 
-func (b *Buffer) Row() int { return b.row }
+func (b *NvimBuffer) Row() int { return b.row }
 
-func (b *Buffer) Col() int { return b.col }
+func (b *NvimBuffer) Col() int { return b.col }
 
-func (b *Buffer) Path() string { return b.path }
+func (b *NvimBuffer) Path() string { return b.path }
 
-func (b *Buffer) Version() int { return b.version }
+func (b *NvimBuffer) Version() int { return b.version }
 
-func (b *Buffer) ViewportBounds() (top, bottom int) {
+func (b *NvimBuffer) ViewportBounds() (top, bottom int) {
 	return b.viewportTop, b.viewportBottom
 }
 
-func (b *Buffer) PreviousLines() []string { return b.previousLines }
+func (b *NvimBuffer) PreviousLines() []string { return b.previousLines }
 
-func (b *Buffer) OriginalLines() []string { return b.originalLines }
+func (b *NvimBuffer) OriginalLines() []string { return b.originalLines }
 
-func (b *Buffer) DiffHistories() []*types.DiffEntry { return b.diffHistories }
+func (b *NvimBuffer) DiffHistories() []*types.DiffEntry { return b.diffHistories }
 
 // SetFileContext restores file-specific state when switching back to a previously edited file.
 // This is called by the engine after detecting a file switch.
-func (b *Buffer) SetFileContext(previousLines, originalLines []string, diffHistories []*types.DiffEntry) {
+func (b *NvimBuffer) SetFileContext(previousLines, originalLines []string, diffHistories []*types.DiffEntry) {
 	if previousLines != nil {
 		b.previousLines = make([]string, len(previousLines))
 		copy(b.previousLines, previousLines)
@@ -128,7 +125,7 @@ func (b *Buffer) SetFileContext(previousLines, originalLines []string, diffHisto
 }
 
 // Sync reads current state from the editor
-func (b *Buffer) Sync(workspacePath string) (*SyncResult, error) {
+func (b *NvimBuffer) Sync(workspacePath string) (*SyncResult, error) {
 	if b.client == nil {
 		return nil, fmt.Errorf("nvim client not set")
 	}
@@ -227,7 +224,7 @@ func makeRelativeToWorkspace(absolutePath, workspacePath string) string {
 }
 
 // HasChanges checks if the proposed completion would introduce actual changes
-func (b *Buffer) HasChanges(startLine, endLineInclusive int, lines []string) bool {
+func (b *NvimBuffer) HasChanges(startLine, endLineInclusive int, lines []string) bool {
 	// Check the original replacement range for changes
 	for i := startLine; i <= endLineInclusive; i++ {
 		relativeLineIdx := i - startLine
@@ -271,7 +268,7 @@ func (nb *nvimBatch) Execute() error {
 }
 
 // PrepareCompletion prepares a completion for display and returns a batch to apply it
-func (b *Buffer) PrepareCompletion(startLine, endLineInc int, lines []string, groups []*text.Group) Batch {
+func (b *NvimBuffer) PrepareCompletion(startLine, endLineInc int, lines []string, groups []*text.Group) Batch {
 	if b.client == nil {
 		return &nvimBatch{batch: nil}
 	}
@@ -308,7 +305,7 @@ func (b *Buffer) PrepareCompletion(startLine, endLineInc int, lines []string, gr
 
 // CommitPending applies the pending edit to buffer state, increments version,
 // and appends structured diff entries showing before/after content. No-op if no pending edit.
-func (b *Buffer) CommitPending() {
+func (b *NvimBuffer) CommitPending() {
 	if !b.hasPending {
 		return
 	}
@@ -358,7 +355,7 @@ func (b *Buffer) CommitPending() {
 }
 
 // ShowCursorTarget displays a cursor prediction indicator at the given line
-func (b *Buffer) ShowCursorTarget(line int) error {
+func (b *NvimBuffer) ShowCursorTarget(line int) error {
 	if b.client == nil {
 		return fmt.Errorf("nvim client not set")
 	}
@@ -368,7 +365,7 @@ func (b *Buffer) ShowCursorTarget(line int) error {
 }
 
 // ClearUI clears the completion UI
-func (b *Buffer) ClearUI() error {
+func (b *NvimBuffer) ClearUI() error {
 	if b.client == nil {
 		return fmt.Errorf("nvim client not set")
 	}
@@ -383,7 +380,7 @@ func (b *Buffer) ClearUI() error {
 }
 
 // MoveCursor moves the cursor to the start of the specified line
-func (b *Buffer) MoveCursor(line int, center bool, mark bool) error {
+func (b *NvimBuffer) MoveCursor(line int, center bool, mark bool) error {
 	if b.client == nil {
 		return fmt.Errorf("nvim client not set")
 	}
@@ -395,7 +392,7 @@ func (b *Buffer) MoveCursor(line int, center bool, mark bool) error {
 }
 
 // LinterErrors retrieves Neovim diagnostics for the current buffer and returns them in provider format
-func (b *Buffer) LinterErrors() *types.LinterErrors {
+func (b *NvimBuffer) LinterErrors() *types.LinterErrors {
 	if b.client == nil {
 		return nil
 	}
@@ -511,7 +508,7 @@ func (b *Buffer) LinterErrors() *types.LinterErrors {
 }
 
 // RegisterEventHandler registers a handler for nvim RPC events
-func (b *Buffer) RegisterEventHandler(handler func(event string)) error {
+func (b *NvimBuffer) RegisterEventHandler(handler func(event string)) error {
 	if b.client == nil {
 		return fmt.Errorf("nvim client not set")
 	}
@@ -522,7 +519,7 @@ func (b *Buffer) RegisterEventHandler(handler func(event string)) error {
 
 // Internal helper methods
 
-func (b *Buffer) executeLuaFunction(luaCode string, args ...any) {
+func (b *NvimBuffer) executeLuaFunction(luaCode string, args ...any) {
 	if b.client == nil {
 		return
 	}
@@ -547,7 +544,7 @@ func applyCursorMove(batch *nvim.Batch, line, col int, center bool, mark bool) {
 	}
 }
 
-func (b *Buffer) getDiffResult(startLine, endLineInclusive int, lines []string) *text.DiffResult {
+func (b *NvimBuffer) getDiffResult(startLine, endLineInclusive int, lines []string) *text.DiffResult {
 	originalLines := []string{}
 	for i := startLine; i <= endLineInclusive && i-1 < len(b.lines); i++ {
 		originalLines = append(originalLines, b.lines[i-1])
@@ -557,7 +554,7 @@ func (b *Buffer) getDiffResult(startLine, endLineInclusive int, lines []string) 
 	return text.ComputeDiff(oldText, newText)
 }
 
-func (b *Buffer) getApplyBatch(startLine, endLineInclusive int, lines []string, diffResult *text.DiffResult) *nvim.Batch {
+func (b *NvimBuffer) getApplyBatch(startLine, endLineInclusive int, lines []string, diffResult *text.DiffResult) *nvim.Batch {
 	// Create apply batch for the completion
 	applyBatch := b.client.NewBatch()
 
@@ -590,7 +587,7 @@ func (b *Buffer) getApplyBatch(startLine, endLineInclusive int, lines []string, 
 	return applyBatch
 }
 
-func (b *Buffer) clearNamespace(batch *nvim.Batch, nsID int) {
+func (b *NvimBuffer) clearNamespace(batch *nvim.Batch, nsID int) {
 	batch.ClearBufferNamespace(b.id, nsID, 0, -1)
 }
 

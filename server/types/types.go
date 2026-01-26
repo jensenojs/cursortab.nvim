@@ -1,7 +1,5 @@
 package types
 
-import "context"
-
 // Completion represents a code completion with line range and content
 type Completion struct {
 	StartLine  int // 1-indexed
@@ -103,12 +101,6 @@ type CursorRange struct {
 	StartCharacter int // 0-indexed
 	EndLine        int // 1-indexed
 	EndCharacter   int // 0-indexed
-}
-
-// Provider defines the interface that all AI providers must implement
-type Provider interface {
-	// GetCompletion returns code completions and optional cursor prediction target in a single response
-	GetCompletion(ctx context.Context, req *CompletionRequest) (*CompletionResponse, error)
 }
 
 // ProviderType represents the type of provider
