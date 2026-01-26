@@ -562,8 +562,12 @@ local function show_completion(diff_result)
 						local line_nvim = abs_line_num - 1 -- Convert to 0-based for nvim API
 
 						-- Get original line content and width
-						local original_content =
-							vim.api.nvim_buf_get_lines(current_buf, line_nvim, line_nvim + 1, false)[1] or ""
+						local original_content = vim.api.nvim_buf_get_lines(
+							current_buf,
+							line_nvim,
+							line_nvim + 1,
+							false
+						)[1] or ""
 						local original_width = vim.fn.strdisplaywidth(original_content)
 
 						-- Create overlay window covering the entire line
@@ -574,7 +578,7 @@ local function show_completion(diff_result)
 								0,
 								new_line_content,
 								syntax_ft,
-								nil,
+								"cursortabhl_modification",
 								original_width
 							)
 							table.insert(completion_windows, { win_id = overlay_win, buf_id = overlay_buf })
