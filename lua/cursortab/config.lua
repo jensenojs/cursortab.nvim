@@ -37,6 +37,7 @@
 ---@field completion_timeout integer
 ---@field max_context_tokens integer
 ---@field max_diff_history_tokens integer
+---@field stop_tokens string[]|nil
 
 ---@class CursortabDebugConfig
 ---@field immediate_shutdown boolean
@@ -91,7 +92,7 @@ local default_config = {
 		completion_timeout = 5000, -- Timeout in ms for completion requests
 		max_context_tokens = 512, -- Max context tokens to include around cursor (0 = no limit)
 		max_diff_history_tokens = 512, -- Max tokens for diff history (0 = no limit)
-		api_key = nil, -- API key for cloud services (optional, e.g., os.getenv("DEEPSEEK_API_KEY"))
+		stop_tokens = nil, -- Stop tokens for completion (optional, defaults to {"\n"} for autocomplete)
 	},
 
 	debug = {

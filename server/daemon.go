@@ -42,7 +42,7 @@ func NewDaemon(config Config) (*Daemon, error) {
 			ProviderTemperature: config.Provider.Temperature,
 			ProviderMaxTokens:   config.Provider.MaxTokens,
 			ProviderTopK:        config.Provider.TopK,
-			ProviderAPIKey:      config.Provider.APIKey,
+			ProviderStopTokens:  config.Provider.StopTokens,
 		},
 	)
 	if err != nil {

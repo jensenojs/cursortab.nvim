@@ -22,7 +22,7 @@ type Provider struct {
 	temperature float64
 	maxTokens   int
 	topK        int
-	apiKey      string
+	stopTokens  []string
 }
 
 // completionRequest matches the OpenAI Completion API format used by serve.py
@@ -62,6 +62,12 @@ func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
+	// Set default stop tokens if not provided
+	stopTokens := config.ProviderStopTokens
+	if len(stopTokens) == 0 {
+		stopTokens = []string{"\n"} // Default: stop at newline for end-of-line completion
+	}
+
 	return &Provider{
 		config:      config,
 		httpClient:  &http.Client{},
@@ -70,7 +76,7 @@ func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 		temperature: config.ProviderTemperature,
 		maxTokens:   config.ProviderMaxTokens,
 		topK:        config.ProviderTopK,
-		apiKey:      config.ProviderAPIKey,
+		stopTokens:  stopTokens,
 	}, nil
 }
 
@@ -87,7 +93,7 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 		Temperature: p.temperature,
 		MaxTokens:   p.maxTokens,
 		TopK:        p.topK,
-		Stop:        []string{"\n"}, // Stop at newline for end-of-line completion
+		Stop:        p.stopTokens, // Use configured stop tokens
 		N:           1,
 		Echo:        false,
 	}
