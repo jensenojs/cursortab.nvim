@@ -22,6 +22,7 @@ type Provider struct {
 	temperature float64
 	maxTokens   int
 	topK        int
+	apiKey      string
 }
 
 // completionRequest matches the OpenAI Completion API format used by serve.py
@@ -69,6 +70,7 @@ func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 		temperature: config.ProviderTemperature,
 		maxTokens:   config.ProviderMaxTokens,
 		topK:        config.ProviderTopK,
+		apiKey:      config.ProviderAPIKey,
 	}, nil
 }
 
@@ -102,6 +104,10 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	// Add Authorization header if API key is provided
+	if p.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 
 	// Send the request
 	resp, err := p.httpClient.Do(httpReq)

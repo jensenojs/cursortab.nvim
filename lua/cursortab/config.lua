@@ -91,6 +91,7 @@ local default_config = {
 		completion_timeout = 5000, -- Timeout in ms for completion requests
 		max_context_tokens = 512, -- Max context tokens to include around cursor (0 = no limit)
 		max_diff_history_tokens = 512, -- Max tokens for diff history (0 = no limit)
+		api_key = nil, -- API key for cloud services (optional, e.g., os.getenv("DEEPSEEK_API_KEY"))
 	},
 
 	debug = {

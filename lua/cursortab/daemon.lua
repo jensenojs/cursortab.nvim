@@ -68,6 +68,7 @@ local function start_daemon()
 			completion_timeout = cfg.provider.completion_timeout,
 			max_context_tokens = cfg.provider.max_context_tokens,
 			max_diff_history_tokens = cfg.provider.max_diff_history_tokens,
+			api_key = cfg.provider.api_key or "",
 		},
 		debug = {
 			immediate_shutdown = cfg.debug.immediate_shutdown,

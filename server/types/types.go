@@ -145,4 +145,5 @@ type ProviderConfig struct {
 	ProviderTemperature float64 // Sampling temperature
 	ProviderMaxTokens   int     // Max tokens to generate
 	ProviderTopK        int     // Top-k sampling (used by some providers)
+	ProviderAPIKey      string  // API key for cloud services (optional)
 }
