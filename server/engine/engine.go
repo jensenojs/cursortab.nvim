@@ -454,9 +454,12 @@ func (e *Engine) handleCursorTarget() {
 
 		// If we have remaining staged completions, check if next stage is still close
 		if e.stagedCompletion != nil && e.stagedCompletion.CurrentIdx < len(e.stagedCompletion.Stages) {
-			nextStage := e.stagedCompletion.Stages[e.stagedCompletion.CurrentIdx]
-			stageStart := nextStage.Completion.StartLine
-			stageEnd := nextStage.Completion.EndLineInc
+			nextStage := e.getStage(e.stagedCompletion.CurrentIdx)
+			if nextStage == nil {
+				return
+			}
+			stageStart := nextStage.BufferStart
+			stageEnd := nextStage.BufferEnd
 
 			// Calculate distance from cursor to next stage
 			var stageDistance int
@@ -538,10 +541,10 @@ func (e *Engine) acceptCompletion() {
 	// Handle staged completions: if there are more stages, show cursor target to next stage
 	if e.stagedCompletion != nil {
 		// Track cumulative offset for unequal line count stages
-		currentStage := e.stagedCompletion.Stages[e.stagedCompletion.CurrentIdx]
-		if currentStage.Completion != nil {
-			oldLineCount := currentStage.Completion.EndLineInc - currentStage.Completion.StartLine + 1
-			newLineCount := len(currentStage.Completion.Lines)
+		currentStage := e.getStage(e.stagedCompletion.CurrentIdx)
+		if currentStage != nil {
+			oldLineCount := currentStage.BufferEnd - currentStage.BufferStart + 1
+			newLineCount := len(currentStage.Lines)
 			e.stagedCompletion.CumulativeOffset += newLineCount - oldLineCount
 		}
 
@@ -553,12 +556,12 @@ func (e *Engine) acceptCompletion() {
 			// Apply cumulative offset to remaining stages if line counts changed
 			if e.stagedCompletion.CumulativeOffset != 0 {
 				for i := e.stagedCompletion.CurrentIdx; i < len(e.stagedCompletion.Stages); i++ {
-					stage := e.stagedCompletion.Stages[i]
-					if stage.Completion != nil {
-						stage.Completion.StartLine += e.stagedCompletion.CumulativeOffset
-						stage.Completion.EndLineInc += e.stagedCompletion.CumulativeOffset
+					stage := e.getStage(i)
+					if stage != nil {
+						stage.BufferStart += e.stagedCompletion.CumulativeOffset
+						stage.BufferEnd += e.stagedCompletion.CumulativeOffset
 					}
-					if stage.CursorTarget != nil {
+					if stage != nil && stage.CursorTarget != nil {
 						stage.CursorTarget.LineNumber += int32(e.stagedCompletion.CumulativeOffset)
 					}
 				}
@@ -568,11 +571,11 @@ func (e *Engine) acceptCompletion() {
 
 			// At n-1 stage (one stage remaining), trigger prefetch early so it has
 			// fresh context and time to complete before the last stage is accepted.
-			// Use stage n's StartLine as context position (where the user will be looking).
+			// Use stage n's BufferStart as context position (where the user will be looking).
 			if e.stagedCompletion.CurrentIdx == len(e.stagedCompletion.Stages)-1 {
-				lastStage := e.stagedCompletion.Stages[len(e.stagedCompletion.Stages)-1]
-				if lastStage.CursorTarget != nil && lastStage.CursorTarget.ShouldRetrigger && lastStage.Completion != nil {
-					overrideRow := max(1, lastStage.Completion.StartLine)
+				lastStage := e.getStage(len(e.stagedCompletion.Stages) - 1)
+				if lastStage != nil && lastStage.CursorTarget != nil && lastStage.CursorTarget.ShouldRetrigger {
+					overrideRow := max(1, lastStage.BufferStart)
 					e.requestPrefetch(types.CompletionSourceTyping, overrideRow, 0)
 				}
 			}
@@ -824,26 +827,45 @@ func (e *Engine) showCurrentStage() {
 		return
 	}
 
-	stage := e.stagedCompletion.Stages[e.stagedCompletion.CurrentIdx]
+	stage := e.getStage(e.stagedCompletion.CurrentIdx)
+	if stage == nil {
+		return
+	}
 
-	e.completions = []*types.Completion{stage.Completion}
+	e.completions = []*types.Completion{{
+		StartLine:  stage.BufferStart,
+		EndLineInc: stage.BufferEnd,
+		Lines:      stage.Lines,
+	}}
 	e.cursorTarget = stage.CursorTarget
 	e.state = stateHasCompletion
 
-	// Use OnCompletionReadyWithGroups with pre-computed visual groups from stage
+	// Use OnCompletionReadyWithGroups with pre-computed groups from stage
 	e.applyBatch = e.buffer.OnCompletionReadyWithGroups(
 		e.n,
-		stage.Completion.StartLine,
-		stage.Completion.EndLineInc,
-		stage.Completion.Lines,
-		stage.VisualGroups,
+		stage.BufferStart,
+		stage.BufferEnd,
+		stage.Lines,
+		stage.Groups,
 	)
 
 	// Store original buffer lines for partial typing optimization
 	e.completionOriginalLines = nil
-	for i := stage.Completion.StartLine; i <= stage.Completion.EndLineInc && i-1 < len(e.buffer.Lines); i++ {
+	for i := stage.BufferStart; i <= stage.BufferEnd && i-1 < len(e.buffer.Lines); i++ {
 		e.completionOriginalLines = append(e.completionOriginalLines, e.buffer.Lines[i-1])
 	}
+}
+
+// getStage returns the stage at the given index with type assertion
+func (e *Engine) getStage(idx int) *text.Stage {
+	if e.stagedCompletion == nil || idx < 0 || idx >= len(e.stagedCompletion.Stages) {
+		return nil
+	}
+	stage, ok := e.stagedCompletion.Stages[idx].(*text.Stage)
+	if !ok {
+		return nil
+	}
+	return stage
 }
 
 // processCompletion is the SINGLE ENTRY POINT for processing all completions.
@@ -897,11 +919,17 @@ func (e *Engine) processCompletion(completion *types.Completion, cursorTarget *t
 		e.config.CursorPrediction.DistThreshold,
 		e.buffer.Path,
 		completion.Lines,
+		originalLines, // oldLines parameter
 	)
 
 	if stagingResult != nil && len(stagingResult.Stages) > 0 {
+		// Convert stages to any slice for storage
+		stagesAny := make([]any, len(stagingResult.Stages))
+		for i, s := range stagingResult.Stages {
+			stagesAny[i] = s
+		}
 		e.stagedCompletion = &types.StagedCompletion{
-			Stages:     stagingResult.Stages,
+			Stages:     stagesAny,
 			CurrentIdx: 0,
 			SourcePath: e.buffer.Path,
 		}
@@ -911,11 +939,11 @@ func (e *Engine) processCompletion(completion *types.Completion, cursorTarget *t
 			firstStage := stagingResult.Stages[0]
 			e.cursorTarget = &types.CursorPredictionTarget{
 				RelativePath:    e.buffer.Path,
-				LineNumber:      int32(firstStage.Completion.StartLine),
+				LineNumber:      int32(firstStage.BufferStart),
 				ShouldRetrigger: false,
 			}
 			e.state = stateHasCursorTarget
-			e.buffer.OnCursorPredictionReady(e.n, firstStage.Completion.StartLine)
+			e.buffer.OnCursorPredictionReady(e.n, firstStage.BufferStart)
 			return true
 		}
 

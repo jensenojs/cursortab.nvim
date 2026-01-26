@@ -11,7 +11,6 @@ import (
 )
 
 // Provider implements the types.Provider interface for Zeta (vLLM with OpenAI-style API)
-// Input trimming uses 80% of max_tokens to ensure output fits within generation limit
 type Provider struct {
 	config      *types.ProviderConfig
 	client      *openai.Client
@@ -280,8 +279,8 @@ func (p *Provider) buildPromptWithSpecialTokens(req *types.CompletionRequest) (s
 	// Convert cursor to 0-indexed for calculations
 	cursorLine := cursorRow - 1
 
-	// Trim content around cursor (80% of max_tokens to leave headroom for output)
-	inputTokenBudget := p.config.ProviderMaxTokens * 80 / 100
+	// Trim content around cursor
+	inputTokenBudget := p.config.ProviderMaxTokens
 	trimmedLines, _, _, trimOffset, didTrim := utils.TrimContentAroundCursor(
 		req.Lines, cursorLine, cursorCol, inputTokenBudget)
 

@@ -24,26 +24,10 @@ type CursorPredictionTarget struct {
 	ShouldRetrigger bool
 }
 
-// CompletionStage represents one stage of a multi-stage completion
-type CompletionStage struct {
-	Completion   *Completion
-	CursorTarget *CursorPredictionTarget
-	IsLastStage  bool
-	VisualGroups []*VisualGroup // Visual groups for UI alignment
-}
-
-// VisualGroup represents consecutive changes for UI alignment
-type VisualGroup struct {
-	Type      string   `json:"type"`      // "modification" or "addition"
-	StartLine int      `json:"startLine"` // 1-indexed relative to diff
-	EndLine   int      `json:"endLine"`
-	Lines     []string `json:"lines"`     // New content
-	OldLines  []string `json:"oldLines"`  // Old content (for modifications)
-}
-
 // StagedCompletion holds the queue of pending stages
+// Note: Uses any to avoid circular import with text package
 type StagedCompletion struct {
-	Stages           []*CompletionStage
+	Stages           []any // []*text.Stage - using any to avoid circular import
 	CurrentIdx       int
 	SourcePath       string
 	CumulativeOffset int // Tracks line count drift after each stage accept (for unequal line counts)
@@ -141,6 +125,6 @@ type ProviderConfig struct {
 	ProviderURL         string  // URL of the provider server (e.g., "http://localhost:8000")
 	ProviderModel       string  // Model name
 	ProviderTemperature float64 // Sampling temperature
-	ProviderMaxTokens   int     // Max tokens to generate (also drives input trimming with 80% headroom)
+	ProviderMaxTokens   int     // Max tokens to generate (also drives input trimming)
 	ProviderTopK        int     // Top-k sampling (used by some providers)
 }

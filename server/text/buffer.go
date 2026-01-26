@@ -77,6 +77,12 @@ func (b *Buffer) SetFileContext(previousLines []string, diffHistories []*types.D
 	if previousLines != nil {
 		b.PreviousLines = make([]string, len(previousLines))
 		copy(b.PreviousLines, previousLines)
+	} else if originalLines != nil {
+		// For new files without previous state, initialize PreviousLines to the original
+		// file content. This ensures providers (like sweep) have a valid "before" state
+		// to compare against, rather than falling back to current content.
+		b.PreviousLines = make([]string, len(originalLines))
+		copy(b.PreviousLines, originalLines)
 	} else {
 		b.PreviousLines = nil
 	}
@@ -227,9 +233,9 @@ func (b *Buffer) getDiffResult(startLine, endLineInclusive int, lines []string) 
 	for i := startLine; i <= endLineInclusive && i-1 < len(b.Lines); i++ {
 		originalLines = append(originalLines, b.Lines[i-1])
 	}
-	oldText := strings.Join(originalLines, "\n")
-	newText := strings.Join(lines, "\n")
-	return analyzeDiff(oldText, newText)
+	oldText := JoinLines(originalLines)
+	newText := JoinLines(lines)
+	return ComputeDiff(oldText, newText)
 }
 
 func (b *Buffer) getApplyBatch(n *nvim.Nvim, startLine, endLineInclusive int, lines []string, diffResult *DiffResult) *nvim.Batch {
@@ -248,11 +254,12 @@ func (b *Buffer) getApplyBatch(n *nvim.Nvim, startLine, endLineInclusive int, li
 
 	applyBatch.SetBufferLines(b.id, startLine-1, endLineInclusive, false, placeBytes)
 
-	// Apply cursor positioning from diff result
-	if diffResult.CursorLine >= 0 && diffResult.CursorCol >= 0 {
+	// Apply cursor positioning from diff changes
+	cursorLine, cursorCol := CalculateCursorPosition(diffResult.Changes, lines)
+	if cursorLine >= 0 && cursorCol >= 0 {
 		// Convert from diff line numbers (relative to new text) to buffer line numbers
-		bufferLine := startLine + diffResult.CursorLine - 1
-		applyCursorMove(applyBatch, bufferLine, diffResult.CursorCol, false, true)
+		bufferLine := startLine + cursorLine - 1
+		applyCursorMove(applyBatch, bufferLine, cursorCol, false, true)
 	}
 
 	// Mark as pending; actual commit happens on accept
@@ -268,44 +275,26 @@ func (b *Buffer) OnCompletionReady(n *nvim.Nvim, startLine, endLineInclusive int
 	return b.OnCompletionReadyWithGroups(n, startLine, endLineInclusive, lines, nil)
 }
 
-// OnCompletionReadyWithGroups shows a completion with optional pre-computed visual groups
-func (b *Buffer) OnCompletionReadyWithGroups(n *nvim.Nvim, startLine, endLineInclusive int, lines []string, visualGroups []*types.VisualGroup) *nvim.Batch {
-	var diffResult *DiffResult
+// OnCompletionReadyWithGroups shows a completion with optional pre-computed groups
+func (b *Buffer) OnCompletionReadyWithGroups(n *nvim.Nvim, startLine, endLineInclusive int, lines []string, groups []*Group) *nvim.Batch {
+	// Compute diff
+	diffResult := b.getDiffResult(startLine, endLineInclusive, lines)
 
-	if len(visualGroups) > 0 {
-		// When visual groups are pre-computed from staging, create the diff result
-		// directly from them. DO NOT recompute a fresh diff because:
-		// 1. Staging already analyzed the diff with consistent coordinates
-		// 2. A fresh diff may have different coordinate mappings (especially with reordering)
-		// 3. Mixing staging's visual groups with a fresh diff causes render overlaps
-		oldLineCount := endLineInclusive - startLine + 1
-		diffResult = createDiffResultFromVisualGroups(visualGroups, lines, oldLineCount)
-	} else {
-		// No pre-computed visual groups - compute fresh diff
-		diffResult = b.getDiffResult(startLine, endLineInclusive, lines)
+	// Get original lines for grouping
+	var originalLines []string
+	for i := startLine; i <= endLineInclusive && i-1 < len(b.Lines); i++ {
+		originalLines = append(originalLines, b.Lines[i-1])
+	}
 
-		// Compute visual groups from the fresh diff
-		if len(diffResult.Changes) > 0 {
-			var originalLines []string
-			for i := startLine; i <= endLineInclusive && i-1 < len(b.Lines); i++ {
-				originalLines = append(originalLines, b.Lines[i-1])
-			}
-			visualGroups = computeVisualGroups(diffResult.Changes, lines, originalLines)
-
-			// Transform visual groups into grouped LineDiff entries
-			if len(visualGroups) > 0 {
-				applyVisualGroupsToDiffResult(diffResult, visualGroups, lines)
-			}
-		}
+	// Use pre-computed groups or compute fresh ones
+	if groups == nil && len(diffResult.Changes) > 0 {
+		groups = GroupChanges(diffResult.Changes)
 	}
 
 	applyBatch := b.getApplyBatch(n, startLine, endLineInclusive, lines, diffResult)
 
-	// Convert diffResult to Lua format with additional context fields
-	luaDiffResult := diffResult.ToLuaFormat(
-		"startLine", startLine,
-		"endLineInclusive", endLineInclusive,
-	)
+	// Convert to Lua format
+	luaDiffResult := diffResultToLuaFormat(diffResult, groups, lines, startLine, endLineInclusive)
 
 	// Debug logging for data sent to Lua
 	if jsonData, err := json.Marshal(luaDiffResult); err == nil {
@@ -318,59 +307,38 @@ func (b *Buffer) OnCompletionReadyWithGroups(n *nvim.Nvim, startLine, endLineInc
 	return applyBatch
 }
 
-// applyVisualGroupsToDiffResult transforms visual groups into grouped LineDiff entries
-// Multi-line groups become modification_group/addition_group, single-line changes stay as-is
-func applyVisualGroupsToDiffResult(diffResult *DiffResult, visualGroups []*types.VisualGroup, newLines []string) {
-	for _, vg := range visualGroups {
-		// Only group multi-line changes
-		if vg.EndLine <= vg.StartLine {
-			continue
+// diffResultToLuaFormat converts diff result and groups to a format suitable for Lua rendering
+func diffResultToLuaFormat(diffResult *DiffResult, groups []*Group, newLines []string, startLine, endLineInclusive int) map[string]any {
+	// Compute cursor position
+	cursorLine, cursorCol := CalculateCursorPosition(diffResult.Changes, newLines)
+
+	// Build groups array for Lua
+	var luaGroups []map[string]any
+	for _, g := range groups {
+		luaGroup := map[string]any{
+			"type":       g.Type,
+			"start_line": g.StartLine,
+			"end_line":   g.EndLine,
+			"lines":      g.Lines,
+			"old_lines":  g.OldLines,
 		}
 
-		// Determine the group type
-		var groupType DiffType
-		switch vg.Type {
-		case "modification":
-			groupType = LineModificationGroup
-		case "addition":
-			groupType = LineAdditionGroup
-		default:
-			continue
+		// Add render hint for character-level optimizations
+		if g.RenderHint != "" {
+			luaGroup["render_hint"] = g.RenderHint
+			luaGroup["col_start"] = g.ColStart
+			luaGroup["col_end"] = g.ColEnd
 		}
 
-		// Collect the lines for this group
-		var groupLines []string
-		for lineNum := vg.StartLine; lineNum <= vg.EndLine; lineNum++ {
-			if lineNum-1 < len(newLines) {
-				groupLines = append(groupLines, newLines[lineNum-1])
-			}
-		}
+		luaGroups = append(luaGroups, luaGroup)
+	}
 
-		// Calculate max offset for modification groups (max width of old lines)
-		maxOffset := 0
-		if groupType == LineModificationGroup {
-			for _, oldLine := range vg.OldLines {
-				if len(oldLine) > maxOffset {
-					maxOffset = len(oldLine)
-				}
-			}
-		}
-
-		// Remove individual entries that are now part of the group
-		for lineNum := vg.StartLine; lineNum <= vg.EndLine; lineNum++ {
-			delete(diffResult.Changes, lineNum)
-		}
-
-		// Add the grouped entry at the start line
-		diffResult.Changes[vg.StartLine] = LineDiff{
-			Type:       groupType,
-			LineNumber: vg.StartLine,
-			Content:    "", // Not used for groups
-			GroupLines: groupLines,
-			StartLine:  vg.StartLine,
-			EndLine:    vg.EndLine,
-			MaxOffset:  maxOffset,
-		}
+	return map[string]any{
+		"startLine":        startLine,
+		"endLineInclusive": endLineInclusive,
+		"groups":           luaGroups,
+		"cursor_line":      cursorLine,
+		"cursor_col":       cursorCol,
 	}
 }
 
@@ -378,8 +346,8 @@ func applyVisualGroupsToDiffResult(diffResult *DiffResult, visualGroups []*types
 // for each contiguous region that changed. This avoids storing unchanged context
 // when a provider (like sweep) replaces a large window but only modifies a few lines.
 func extractGranularDiffs(oldLines, newLines []string) []*types.DiffEntry {
-	oldText := strings.Join(oldLines, "\n")
-	newText := strings.Join(newLines, "\n")
+	oldText := JoinLines(oldLines)
+	newText := JoinLines(newLines)
 
 	if oldText == newText {
 		return nil

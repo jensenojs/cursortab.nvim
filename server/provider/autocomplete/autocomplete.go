@@ -182,15 +182,15 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 }
 
 // buildPrompt constructs the prompt from the file content up to the cursor position
-// Uses max_tokens to limit context size (80% headroom for output)
+// Uses max_tokens to limit context size
 func (p *Provider) buildPrompt(req *types.CompletionRequest) string {
 	if len(req.Lines) == 0 {
 		return ""
 	}
 
-	// Trim content around cursor (80% of max_tokens to leave headroom)
+	// Trim content around cursor
 	cursorLine := req.CursorRow - 1 // Convert to 0-indexed
-	inputTokenBudget := p.config.ProviderMaxTokens * 80 / 100
+	inputTokenBudget := p.config.ProviderMaxTokens
 	trimmedLines, newCursorRow, _, _, _ := utils.TrimContentAroundCursor(
 		req.Lines, cursorLine, req.CursorCol, inputTokenBudget)
 

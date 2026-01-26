@@ -2,526 +2,70 @@ package text
 
 import (
 	"cursortab/assert"
-	"cursortab/types"
 	"fmt"
 	"testing"
 )
 
 // =============================================================================
-// Tests for createDiffResultFromVisualGroups - the fix for overlapping renders
+// Tests for coordinate mapping in staging
 // =============================================================================
 
-// TestCreateDiffResultFromVisualGroups_NoOverlaps verifies that the fix works:
-// when visual groups are provided from staging, createDiffResultFromVisualGroups
-// produces a diff result without overlapping render positions.
-func TestCreateDiffResultFromVisualGroups_NoOverlaps(t *testing.T) {
-	newLines := []string{
-		"    },",
-		"    {",
-		`      "timestamp": "2022-01-05T00:00:00Z",`,
-		`      "value": 300,`,
-		`      "name": "John"`,
-		"    },",
-		"    {",
-		`      "timestamp": "2022-01-06T00:00:00Z",`,
-	}
-
-	// Visual groups from staging - already have consistent coordinates
-	// Staging groups consecutive changes of the same type
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "modification",
-			StartLine: 1,
-			EndLine:   2,
-			Lines:     []string{"    },", "    {"},
-			OldLines:  []string{"    },", "        {"},
-		},
-		{
-			Type:      "addition",
-			StartLine: 3,
-			EndLine:   8,
-			Lines:     newLines[2:],
-			OldLines:  nil,
-		},
-	}
-
-	// Create diff result from visual groups (the fix)
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	// Verify the diff result has changes
-	assert.True(t, len(diffResult.Changes) > 0, "diff result should have changes")
-
-	// Verify no overlapping render positions
-	// Since visual groups are already non-overlapping (consecutive grouping),
-	// the resulting diff should also be non-overlapping
-	positions := make(map[int]string) // line number -> change type
-	for lineNum, change := range diffResult.Changes {
-		if _, exists := positions[lineNum]; exists {
-			t.Errorf("OVERLAP: multiple changes at line %d", lineNum)
-		}
-		positions[lineNum] = change.Type.String()
-	}
-
-	// Verify we have distinct modification and addition entries
-	hasModification := false
-	hasAddition := false
-	for _, change := range diffResult.Changes {
-		if change.Type == LineModification || change.Type == LineModificationGroup {
-			hasModification = true
-		}
-		if change.Type == LineAddition || change.Type == LineAdditionGroup {
-			hasAddition = true
-		}
-	}
-	assert.True(t, hasModification, "should have modification")
-	assert.True(t, hasAddition, "should have addition")
-
-	// Verify cursor position is set
-	assert.True(t, diffResult.CursorLine > 0, "cursor line should be set")
-	assert.True(t, diffResult.CursorCol >= 0, "cursor col should be set")
-}
-
-// TestCreateDiffResultFromVisualGroups_BoundsValidation verifies that
-// createDiffResultFromVisualGroups properly validates bounds.
-func TestCreateDiffResultFromVisualGroups_BoundsValidation(t *testing.T) {
-	newLines := []string{"line1", "line2", "line3"}
-
-	// Visual group with out-of-bounds coordinates
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "modification",
-			StartLine: 10, // Out of bounds
-			EndLine:   15,
-			Lines:     []string{"ignored"},
-			OldLines:  []string{"ignored"},
-		},
-		{
-			Type:      "addition",
-			StartLine: 1,
-			EndLine:   2,
-			Lines:     []string{"line1", "line2"},
-		},
-	}
-
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	// Should only have the valid visual group
-	assert.Equal(t, 1, len(diffResult.Changes), "should only have 1 change (the valid one)")
-
-	// The valid change should be at line 1
-	_, exists := diffResult.Changes[1]
-	assert.True(t, exists, "valid change at line 1 should exist")
-}
-
-// TestCreateDiffResultFromVisualGroups_SingleLineGroups verifies handling of
-// single-line visual groups (where StartLine == EndLine).
-func TestCreateDiffResultFromVisualGroups_SingleLineGroups(t *testing.T) {
-	newLines := []string{"modified line", "added line"}
-
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "modification",
-			StartLine: 1,
-			EndLine:   1, // Single line
-			Lines:     []string{"modified line"},
-			OldLines:  []string{"old line"},
-		},
-		{
-			Type:      "addition",
-			StartLine: 2,
-			EndLine:   2, // Single line
-			Lines:     []string{"added line"},
-		},
-	}
-
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	assert.Equal(t, 2, len(diffResult.Changes), "should have 2 changes")
-
-	// Single-line changes should NOT be group types
-	mod, exists := diffResult.Changes[1]
-	assert.True(t, exists, "modification at line 1")
-	assert.Equal(t, LineModification, mod.Type, "single-line modification type")
-
-	add, exists := diffResult.Changes[2]
-	assert.True(t, exists, "addition at line 2")
-	assert.Equal(t, LineAddition, add.Type, "single-line addition type")
-}
-
-// TestCreateDiffResultFromVisualGroups_EmptyGroups verifies handling of empty input.
-func TestCreateDiffResultFromVisualGroups_EmptyGroups(t *testing.T) {
-	newLines := []string{"line1", "line2"}
-
-	diffResult := createDiffResultFromVisualGroups(nil, newLines, len(newLines))
-
-	assert.Equal(t, 0, len(diffResult.Changes), "no changes for nil visual groups")
-	assert.Equal(t, -1, diffResult.CursorLine, "no cursor position")
-
-	diffResult = createDiffResultFromVisualGroups([]*types.VisualGroup{}, newLines, len(newLines))
-
-	assert.Equal(t, 0, len(diffResult.Changes), "no changes for empty visual groups")
-}
-
-// TestCreateDiffResultFromVisualGroups_GroupContent verifies that group content
-// is correctly extracted from newLines.
-func TestCreateDiffResultFromVisualGroups_GroupContent(t *testing.T) {
-	newLines := []string{"line1", "line2", "line3", "line4", "line5"}
-
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "addition",
-			StartLine: 2,
-			EndLine:   4,
-			Lines:     []string{"line2", "line3", "line4"},
-		},
-	}
-
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	change, exists := diffResult.Changes[2]
-	assert.True(t, exists, "change at line 2")
-	assert.Equal(t, LineAdditionGroup, change.Type, "multi-line addition is a group")
-	assert.Equal(t, 3, len(change.GroupLines), "group has 3 lines")
-	assert.Equal(t, "line2", change.GroupLines[0], "first group line")
-	assert.Equal(t, "line3", change.GroupLines[1], "second group line")
-	assert.Equal(t, "line4", change.GroupLines[2], "third group line")
-	assert.Equal(t, 2, change.StartLine, "StartLine")
-	assert.Equal(t, 4, change.EndLine, "EndLine")
-}
-
-// TestCreateDiffResultFromVisualGroups_CursorPosition verifies cursor is placed
-// at the end of the last change.
-func TestCreateDiffResultFromVisualGroups_CursorPosition(t *testing.T) {
-	newLines := []string{"short", "this is a longer line", "medium len"}
-
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "modification",
-			StartLine: 1,
-			EndLine:   1,
-			Lines:     []string{"short"},
-			OldLines:  []string{"old"},
-		},
-		{
-			Type:      "addition",
-			StartLine: 2,
-			EndLine:   3,
-			Lines:     []string{"this is a longer line", "medium len"},
-		},
-	}
-
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	// Cursor should be at line 3 (end of last change)
-	assert.Equal(t, 3, diffResult.CursorLine, "cursor at last change line")
-	// Cursor col should be end of "medium len" = 10
-	assert.Equal(t, 10, diffResult.CursorCol, "cursor at end of last line")
-}
-
-// =============================================================================
-// Tests for OldLineNum coordinate mapping - critical for Lua rendering
-// =============================================================================
-
-// TestCreateDiffResultFromVisualGroups_ModificationHasOldLineNum verifies that
-// modifications have OldLineNum set, which is required for Lua to correctly
-// calculate buffer positions when rendering inline changes.
-//
-// Without OldLineNum, Lua falls back to using the map key which causes offset errors.
-func TestCreateDiffResultFromVisualGroups_ModificationHasOldLineNum(t *testing.T) {
-	newLines := []string{"line1", "modified line 2", "line3"}
-
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "modification",
-			StartLine: 2,
-			EndLine:   2,
-			Lines:     []string{"modified line 2"},
-			OldLines:  []string{"old line 2"},
-		},
-	}
-
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	change, exists := diffResult.Changes[2]
-	assert.True(t, exists, "change at line 2 should exist")
-	assert.Equal(t, LineModification, change.Type, "should be modification type")
-
-	// CRITICAL: OldLineNum must be set for modifications
-	// Lua uses this to calculate: absolute_line_num = startLine + oldLineNum - 1
-	// Without it (OldLineNum=0), Lua falls back to using map key which is wrong
-	assert.True(t, change.OldLineNum > 0,
-		"modification must have OldLineNum > 0 for correct Lua rendering")
-	assert.Equal(t, 2, change.OldLineNum,
-		"OldLineNum should equal StartLine for modifications (1:1 replacement)")
-}
-
-// TestCreateDiffResultFromVisualGroups_ModificationGroupHasOldLineNum verifies
-// that modification groups also have OldLineNum set correctly.
-func TestCreateDiffResultFromVisualGroups_ModificationGroupHasOldLineNum(t *testing.T) {
-	newLines := []string{"line1", "mod2", "mod3", "mod4", "line5"}
-
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "modification",
-			StartLine: 2,
-			EndLine:   4, // Multi-line group
-			Lines:     []string{"mod2", "mod3", "mod4"},
-			OldLines:  []string{"old2", "old3", "old4"},
-		},
-	}
-
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	change, exists := diffResult.Changes[2]
-	assert.True(t, exists, "change at line 2 should exist")
-	assert.Equal(t, LineModificationGroup, change.Type, "should be modification_group type")
-
-	// OldLineNum must be set for modification groups too
-	assert.True(t, change.OldLineNum > 0,
-		"modification_group must have OldLineNum > 0")
-	assert.Equal(t, 2, change.OldLineNum,
-		"OldLineNum should equal StartLine for modification groups")
-}
-
-// TestCreateDiffResultFromVisualGroups_AdditionHasNoOldLineNum verifies that
-// additions do NOT have OldLineNum set (they're new lines with no old equivalent).
-func TestCreateDiffResultFromVisualGroups_AdditionHasNoOldLineNum(t *testing.T) {
-	newLines := []string{"line1", "added line 2", "line3"}
-
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "addition",
-			StartLine: 2,
-			EndLine:   2,
-			Lines:     []string{"added line 2"},
-			OldLines:  nil,
-		},
-	}
-
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	change, exists := diffResult.Changes[2]
-	assert.True(t, exists, "change at line 2 should exist")
-	assert.Equal(t, LineAddition, change.Type, "should be addition type")
-
-	// Additions should NOT have OldLineNum (no corresponding old line)
-	assert.True(t, change.OldLineNum <= 0,
-		"additions should not have OldLineNum > 0 (they're new lines)")
-}
-
-// TestCreateDiffResultFromVisualGroups_ExpansionOldLineNum verifies that when
-// 1 old line becomes 3 new lines, the modification's OldLineNum is clamped to
-// the actual old line count (1), not the new line number (2).
-// This fixes the bug where Lua calculated incorrect buffer positions.
-func TestCreateDiffResultFromVisualGroups_ExpansionOldLineNum(t *testing.T) {
-	// Scenario: 1 old line (whitespace) becomes 3 new lines (timestamp, value, name)
-	// The modification at new line 2 should have OldLineNum = 1 (the only old line)
-	newLines := []string{
-		`            "timestamp": "2022-01-04T01:00:00Z",`,
-		`            "value": 260,`,
-		`            "name": "John"`,
-	}
-
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "addition",
-			StartLine: 1,
-			EndLine:   1,
-			Lines:     []string{newLines[0]},
-		},
-		{
-			Type:      "modification",
-			StartLine: 2,
-			EndLine:   2,
-			Lines:     []string{newLines[1]},
-			OldLines:  []string{"            "}, // whitespace
-		},
-		{
-			Type:      "addition",
-			StartLine: 3,
-			EndLine:   3,
-			Lines:     []string{newLines[2]},
-		},
-	}
-
-	// CRITICAL: Pass oldLineCount=1 to indicate only 1 old line exists
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, 1)
-
-	// The modification at new line 2 should have OldLineNum = 1 (clamped to old line count)
-	mod, exists := diffResult.Changes[2]
-	assert.True(t, exists, "modification at line 2 should exist")
-	assert.Equal(t, LineModification, mod.Type, "should be modification type")
-
-	// CRITICAL FIX: OldLineNum should be 1, NOT 2
-	// If oldLineNum = 2, Lua calculates: bufferLine = startLine + 2 - 1 = startLine + 1
-	// But the stage only covers 1 buffer line (startLine), so this is wrong!
-	// With oldLineNum = 1, Lua calculates: bufferLine = startLine + 1 - 1 = startLine (correct)
-	assert.Equal(t, 1, mod.OldLineNum,
-		"modification OldLineNum should be 1 (clamped to old line count), not 2 (new line number)")
-}
-
-// TestCreateDiffResultFromVisualGroups_MixedChangesCoordinates verifies that
-// a mix of modifications and additions have correct coordinate mappings.
-// This simulates the real scenario: a stage with some modifications followed by additions.
-func TestCreateDiffResultFromVisualGroups_MixedChangesCoordinates(t *testing.T) {
-	// Simulate: 5 old lines replaced by 8 new lines
-	// - Lines 1-3 unchanged (no visual group)
-	// - Line 4 modified
-	// - Lines 5-8 are additions
-	newLines := []string{
-		"unchanged1",
-		"unchanged2",
-		"unchanged3",
-		"MODIFIED line 4",
-		"ADDED line 5",
-		"ADDED line 6",
-		"ADDED line 7",
-		"ADDED line 8",
-	}
-
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "modification",
-			StartLine: 4,
-			EndLine:   4,
-			Lines:     []string{"MODIFIED line 4"},
-			OldLines:  []string{"old line 4"},
-		},
-		{
-			Type:      "addition",
-			StartLine: 5,
-			EndLine:   8,
-			Lines:     []string{"ADDED line 5", "ADDED line 6", "ADDED line 7", "ADDED line 8"},
-			OldLines:  nil,
-		},
-	}
-
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	// Verify modification at line 4
-	mod, exists := diffResult.Changes[4]
-	assert.True(t, exists, "modification at line 4")
-	assert.Equal(t, LineModification, mod.Type, "line 4 is modification")
-	assert.Equal(t, 4, mod.OldLineNum, "modification OldLineNum should be 4")
-	assert.Equal(t, 4, mod.NewLineNum, "modification NewLineNum should be 4")
-
-	// Verify addition group at line 5
-	add, exists := diffResult.Changes[5]
-	assert.True(t, exists, "addition at line 5")
-	assert.Equal(t, LineAdditionGroup, add.Type, "line 5 is addition_group")
-	assert.True(t, add.OldLineNum <= 0, "addition should not have OldLineNum > 0")
-	assert.Equal(t, 5, add.NewLineNum, "addition NewLineNum should be 5")
-	assert.Equal(t, 5, add.StartLine, "addition StartLine")
-	assert.Equal(t, 8, add.EndLine, "addition EndLine")
-}
-
-// TestLuaCoordinateCalculation simulates how Lua calculates buffer positions
-// and verifies that the coordinates from createDiffResultFromVisualGroups are correct.
-func TestLuaCoordinateCalculation(t *testing.T) {
-	// Simulate a stage that covers buffer lines 28-32 (startLine=28, endLineInclusive=32)
-	// with 8 new lines replacing 5 old lines
-	stageStartLine := 28
-	newLines := []string{
-		"line1", "line2", "line3",
-		"MODIFIED line 4",
-		"ADDED 5", "ADDED 6", "ADDED 7", "ADDED 8",
-	}
-
-	visualGroups := []*types.VisualGroup{
-		{
-			Type:      "modification",
-			StartLine: 4, // Relative to stage content
-			EndLine:   4,
-			Lines:     []string{"MODIFIED line 4"},
-			OldLines:  []string{"old 4"},
-		},
-		{
-			Type:      "addition",
-			StartLine: 5, // Relative to stage content
-			EndLine:   8,
-			Lines:     []string{"ADDED 5", "ADDED 6", "ADDED 7", "ADDED 8"},
-		},
-	}
-
-	diffResult := createDiffResultFromVisualGroups(visualGroups, newLines, len(newLines))
-
-	// Simulate Lua's coordinate calculation for modification
-	mod := diffResult.Changes[4]
-
-	// Lua code (simplified):
-	// if is_modification_type and oldLineNum > 0 then
-	//     absolute_line_num = startLine + oldLineNum - 1
-	// else
-	//     absolute_line_num = startLine + map_key - 1  (fallback - WRONG for mods!)
-	// end
-
-	var absoluteLineNum int
-	if mod.OldLineNum > 0 {
-		// Correct path: use oldLineNum
-		absoluteLineNum = stageStartLine + mod.OldLineNum - 1
-	} else {
-		// Fallback path (what happens without the fix)
-		absoluteLineNum = stageStartLine + 4 - 1 // map key is 4
-	}
-
-	// Expected: modification at buffer line 31 (28 + 4 - 1)
-	expectedBufferLine := 31
-	assert.Equal(t, expectedBufferLine, absoluteLineNum,
-		"modification should render at buffer line 31")
-
-	// Verify OldLineNum is set (otherwise we'd hit the fallback)
-	assert.True(t, mod.OldLineNum > 0,
-		"OldLineNum must be > 0 for Lua to use the correct calculation")
-}
-
-// TestVisualGroupsDoNotOverlapWithModifications verifies that when staging
-// creates visual groups, they don't overlap with modification positions.
-func TestVisualGroupsDoNotOverlapWithModifications(t *testing.T) {
-	// Scenario: modifications at some lines, additions at others
-	// Visual groups for additions should not overlap with modification lines
-
+// TestStageCoordinates_ModificationHasCorrectMapping verifies that modifications
+// in a stage have correct coordinate mapping for rendering.
+func TestStageCoordinates_ModificationHasCorrectMapping(t *testing.T) {
+	// Create a diff with a modification
 	diff := &DiffResult{
-		Changes: map[int]LineDiff{
-			// Modification at new line 1 (was old line 3)
-			1: {Type: LineModification, LineNumber: 1, NewLineNum: 1, OldLineNum: 3,
-				Content: "new1", OldContent: "old3"},
-			// delete_chars at new line 2 (was old line 1)
-			2: {Type: LineDeleteChars, LineNumber: 2, NewLineNum: 2, OldLineNum: 1,
-				Content: "new2", OldContent: "old1", ColStart: 0, ColEnd: 4},
-			// Addition at new line 3
-			3: {Type: LineAddition, LineNumber: 3, NewLineNum: 3, OldLineNum: -1,
-				Content: "added3"},
-			// Addition at new line 4
-			4: {Type: LineAddition, LineNumber: 4, NewLineNum: 4, OldLineNum: -1,
-				Content: "added4"},
-			// Addition group at new lines 5-8
-			5: {Type: LineAdditionGroup, LineNumber: 5, NewLineNum: 5, OldLineNum: -1,
-				Content: "", StartLine: 5, EndLine: 8,
-				GroupLines: []string{"added5", "added6", "added7", "added8"}},
+		Changes: map[int]LineChange{
+			2: {Type: ChangeModification, NewLineNum: 2, OldLineNum: 2, Content: "new line 2", OldContent: "old line 2"},
 		},
 		OldLineCount: 5,
-		NewLineCount: 8,
+		NewLineCount: 5,
 	}
 
-	newLines := []string{"new1", "new2", "added3", "added4", "added5", "added6", "added7", "added8"}
-	oldLines := []string{"", "", "old3", "", "old1"} // Sparse: only modifications have old content
+	newLines := []string{"line1", "new line 2", "line3", "line4", "line5"}
+	oldLines := []string{"line1", "old line 2", "line3", "line4", "line5"}
 
-	// Compute visual groups
-	groups := computeVisualGroups(diff.Changes, newLines, oldLines)
+	result := CreateStages(diff, 2, 1, 50, 1, 3, "test.go", newLines, oldLines)
 
-	// Verify visual groups don't reference lines beyond newLines bounds
-	for _, vg := range groups {
-		assert.True(t, vg.StartLine >= 1 && vg.StartLine <= len(newLines),
-			fmt.Sprintf("VisualGroup StartLine %d should be within [1, %d]", vg.StartLine, len(newLines)))
-		assert.True(t, vg.EndLine >= 1 && vg.EndLine <= len(newLines),
-			fmt.Sprintf("VisualGroup EndLine %d should be within [1, %d]", vg.EndLine, len(newLines)))
+	assert.NotNil(t, result, "result")
+	assert.True(t, len(result.Stages) >= 1, "should have at least 1 stage")
+
+	stage := result.Stages[0]
+	assert.True(t, len(stage.Changes) > 0, "stage should have changes")
+
+	// Verify the change has correct NewLineNum
+	for _, change := range stage.Changes {
+		if change.Type == ChangeModification {
+			assert.True(t, change.NewLineNum > 0, "modification should have NewLineNum > 0")
+		}
 	}
+}
+
+// TestStageCoordinates_AdditionMapping verifies that additions have correct coordinate mapping.
+func TestStageCoordinates_AdditionMapping(t *testing.T) {
+	diff := &DiffResult{
+		Changes: map[int]LineChange{
+			2: {Type: ChangeAddition, NewLineNum: 2, OldLineNum: 1, Content: "added line"},
+		},
+		OldLineCount: 3,
+		NewLineCount: 4,
+		LineMapping: &LineMapping{
+			NewToOld: []int{1, -1, 2, 3},
+			OldToNew: []int{1, 3, 4},
+		},
+	}
+
+	newLines := []string{"line1", "added line", "line2", "line3"}
+	oldLines := []string{"line1", "line2", "line3"}
+
+	result := CreateStages(diff, 1, 1, 50, 1, 3, "test.go", newLines, oldLines)
+
+	assert.NotNil(t, result, "result")
+	assert.True(t, len(result.Stages) >= 1, "should have at least 1 stage")
 }
 
 // TestSingleLineToMultipleLinesAllIncluded verifies that when one old line becomes
-// multiple new lines (like whitespace becoming timestamp, value, name), all the new
-// lines are included in the diff changes and visual groups.
-// This tests the fix for the bug where middle lines were missing from the diff.
+// multiple new lines, all the new lines are included in the stage.
 func TestSingleLineToMultipleLinesAllIncluded(t *testing.T) {
 	// Scenario: one whitespace line becomes three content lines
 	oldText := `        {
@@ -533,22 +77,16 @@ func TestSingleLineToMultipleLinesAllIncluded(t *testing.T) {
             "name": "John"
         }`
 
-	diffResult := analyzeDiff(oldText, newText)
+	diffResult := ComputeDiff(oldText, newText)
 
 	// We should have changes for new lines 2, 3, 4 (the three content lines)
-	// Line 1 ({) and line 5 (}) are equal
-	// Line 2 is a modification (whitespace -> timestamp, categorized as append/modification)
-	// Lines 3 and 4 are additions (value, name)
-
-	// Check that we have at least 3 changes (could be 2 modifications + 1 addition depending on categorization)
 	assert.True(t, len(diffResult.Changes) >= 2,
 		fmt.Sprintf("Expected at least 2 changes, got %d", len(diffResult.Changes)))
 
 	// Verify that additions from a delete+insert block stay together for staging
-	// by checking their OldLineNum values are consistent
 	var additionOldLineNums []int
 	for _, change := range diffResult.Changes {
-		if change.Type == LineAddition || change.Type == LineAdditionGroup {
+		if change.Type == ChangeAddition {
 			additionOldLineNums = append(additionOldLineNums, change.OldLineNum)
 		}
 	}
@@ -561,8 +99,7 @@ func TestSingleLineToMultipleLinesAllIncluded(t *testing.T) {
 }
 
 // TestStageIncludesAllLinesFromDeleteInsertBlock verifies that when creating stages
-// from a diff where one line becomes multiple lines, all the new lines are included
-// in the stage and its visual groups.
+// from a diff where one line becomes multiple lines, all the new lines are included.
 func TestStageIncludesAllLinesFromDeleteInsertBlock(t *testing.T) {
 	// Scenario: one whitespace line becomes three content lines
 	oldText := "            " // just whitespace
@@ -570,10 +107,11 @@ func TestStageIncludesAllLinesFromDeleteInsertBlock(t *testing.T) {
             "value": 260,
             "name": "John"`
 
-	diffResult := analyzeDiff(oldText, newText)
+	diffResult := ComputeDiff(oldText, newText)
 
 	// Create stages from this diff
 	newLines := splitLines(newText)
+	oldLines := splitLines(oldText)
 	stagingResult := CreateStages(
 		diffResult,
 		1,    // cursorRow
@@ -582,24 +120,535 @@ func TestStageIncludesAllLinesFromDeleteInsertBlock(t *testing.T) {
 		3,    // proximityThreshold
 		"test.json",
 		newLines,
+		oldLines,
 	)
 
 	// All changes should be in one stage since they're from the same delete+insert block
 	if stagingResult != nil && len(stagingResult.Stages) > 0 {
 		stage := stagingResult.Stages[0]
 
-		// The stage's completion should have all 3 lines
-		assert.Equal(t, 3, len(stage.Completion.Lines),
-			fmt.Sprintf("Stage should have 3 lines, got %d", len(stage.Completion.Lines)))
+		// The stage should have all 3 lines
+		assert.Equal(t, 3, len(stage.Lines),
+			fmt.Sprintf("Stage should have 3 lines, got %d", len(stage.Lines)))
 
-		// The visual groups should cover all lines
+		// The groups should cover the changed lines
 		totalLinesInGroups := 0
-		for _, vg := range stage.VisualGroups {
-			totalLinesInGroups += vg.EndLine - vg.StartLine + 1
+		for _, g := range stage.Groups {
+			totalLinesInGroups += g.EndLine - g.StartLine + 1
 		}
-		// All 3 lines should be accounted for in visual groups
-		// (either as one group of 3 or multiple groups totaling 3)
 		assert.True(t, totalLinesInGroups >= 2,
-			fmt.Sprintf("Visual groups should cover at least 2 lines, got %d", totalLinesInGroups))
+			fmt.Sprintf("Groups should cover at least 2 lines, got %d", totalLinesInGroups))
+	}
+}
+
+// TestMixedChangesCoordinates verifies that a mix of modifications and additions
+// have correct coordinate mappings.
+func TestMixedChangesCoordinates(t *testing.T) {
+	// Simulate: 5 old lines replaced by 8 new lines
+	diff := &DiffResult{
+		Changes: map[int]LineChange{
+			4: {Type: ChangeModification, NewLineNum: 4, OldLineNum: 4, Content: "MODIFIED line 4", OldContent: "line 4"},
+			5: {Type: ChangeAddition, NewLineNum: 5, OldLineNum: 4, Content: "ADDED line 5"},
+			6: {Type: ChangeAddition, NewLineNum: 6, OldLineNum: 4, Content: "ADDED line 6"},
+			7: {Type: ChangeAddition, NewLineNum: 7, OldLineNum: 4, Content: "ADDED line 7"},
+			8: {Type: ChangeAddition, NewLineNum: 8, OldLineNum: 4, Content: "ADDED line 8"},
+		},
+		OldLineCount: 5,
+		NewLineCount: 8,
+	}
+
+	newLines := []string{
+		"unchanged1",
+		"unchanged2",
+		"unchanged3",
+		"MODIFIED line 4",
+		"ADDED line 5",
+		"ADDED line 6",
+		"ADDED line 7",
+		"ADDED line 8",
+	}
+	oldLines := []string{
+		"unchanged1",
+		"unchanged2",
+		"unchanged3",
+		"line 4",
+		"line 5",
+	}
+
+	result := CreateStages(diff, 4, 1, 50, 1, 3, "test.go", newLines, oldLines)
+
+	assert.NotNil(t, result, "result")
+	assert.True(t, len(result.Stages) >= 1, "should have at least 1 stage")
+
+	// Find the stage with changes
+	stage := result.Stages[0]
+
+	// Should have changes
+	assert.True(t, len(stage.Changes) > 0, "stage should have changes")
+
+	// Check that modification has OldLineNum
+	for _, change := range stage.Changes {
+		if change.Type == ChangeModification {
+			assert.True(t, change.OldLineNum > 0, "modification should have OldLineNum > 0")
+		}
+	}
+}
+
+// TestGroupsDoNotOverlapWithModifications verifies that when staging creates groups,
+// they don't overlap.
+func TestGroupsDoNotOverlapWithModifications(t *testing.T) {
+	diff := &DiffResult{
+		Changes: map[int]LineChange{
+			// Modification at new line 1
+			1: {Type: ChangeModification, NewLineNum: 1, OldLineNum: 3, Content: "new1", OldContent: "old3"},
+			// Character-level change at new line 2
+			2: {Type: ChangeDeleteChars, NewLineNum: 2, OldLineNum: 1, Content: "new2", OldContent: "old1", ColStart: 0, ColEnd: 4},
+			// Addition at new line 3
+			3: {Type: ChangeAddition, NewLineNum: 3, OldLineNum: -1, Content: "added3"},
+			// Addition at new line 4
+			4: {Type: ChangeAddition, NewLineNum: 4, OldLineNum: -1, Content: "added4"},
+		},
+		OldLineCount: 5,
+		NewLineCount: 8,
+	}
+
+	newLines := []string{"new1", "new2", "added3", "added4", "added5", "added6", "added7", "added8"}
+	oldLines := []string{"", "", "old3", "", "old1"}
+
+	result := CreateStages(diff, 1, 1, 50, 1, 3, "test.go", newLines, oldLines)
+
+	assert.NotNil(t, result, "result")
+
+	// Verify groups don't reference lines beyond stage content bounds
+	for _, stage := range result.Stages {
+		for _, g := range stage.Groups {
+			assert.True(t, g.StartLine >= 1 && g.StartLine <= len(stage.Lines),
+				fmt.Sprintf("Group StartLine %d should be within [1, %d]", g.StartLine, len(stage.Lines)))
+			assert.True(t, g.EndLine >= 1 && g.EndLine <= len(stage.Lines),
+				fmt.Sprintf("Group EndLine %d should be within [1, %d]", g.EndLine, len(stage.Lines)))
+		}
+	}
+}
+
+// TestBufferLineCalculation simulates how buffer positions are calculated and verifies
+// that stage coordinates are correct.
+func TestBufferLineCalculation(t *testing.T) {
+	// Simulate a stage that covers buffer lines 28-32 (baseLineOffset=28)
+	// with 8 new lines replacing 5 old lines
+	diff := &DiffResult{
+		Changes: map[int]LineChange{
+			4: {Type: ChangeModification, NewLineNum: 4, OldLineNum: 4, Content: "MODIFIED line 4", OldContent: "old 4"},
+			5: {Type: ChangeAddition, NewLineNum: 5, OldLineNum: 4, Content: "ADDED 5"},
+			6: {Type: ChangeAddition, NewLineNum: 6, OldLineNum: 4, Content: "ADDED 6"},
+			7: {Type: ChangeAddition, NewLineNum: 7, OldLineNum: 4, Content: "ADDED 7"},
+			8: {Type: ChangeAddition, NewLineNum: 8, OldLineNum: 4, Content: "ADDED 8"},
+		},
+		OldLineCount: 5,
+		NewLineCount: 8,
+	}
+
+	newLines := []string{
+		"line1", "line2", "line3",
+		"MODIFIED line 4",
+		"ADDED 5", "ADDED 6", "ADDED 7", "ADDED 8",
+	}
+	oldLines := []string{"line1", "line2", "line3", "old 4", "line5"}
+
+	baseLineOffset := 28
+	result := CreateStages(diff, 30, 1, 100, baseLineOffset, 3, "test.go", newLines, oldLines)
+
+	assert.NotNil(t, result, "result")
+	assert.True(t, len(result.Stages) >= 1, "should have at least 1 stage")
+
+	// Check that BufferStart is correctly offset
+	stage := result.Stages[0]
+	assert.True(t, stage.BufferStart >= baseLineOffset,
+		fmt.Sprintf("BufferStart (%d) should be >= baseLineOffset (%d)", stage.BufferStart, baseLineOffset))
+}
+
+// TestPureAdditionsAfterExistingContent verifies that when adding lines after
+// the end of existing content, BufferStart points to the first new line, not the anchor.
+// This reproduces the production bug where a file with 2 lines gets additions and
+// BufferStart is 2 (the anchor) instead of 3 (the insertion point).
+func TestPureAdditionsAfterExistingContent(t *testing.T) {
+	// Scenario: File has 2 lines, completion adds 8 more lines
+	// Old: ["import numpy as np", ""]
+	// New: ["import numpy as np", "", "def calculate_distance...", ...]
+	// Lines 1-2 unchanged, lines 3-10 are pure additions
+	oldLines := []string{"import numpy as np", ""}
+	newLines := []string{
+		"import numpy as np",
+		"",
+		"def calculate_distance(x1, y1, x2, y2):",
+		"    return np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)",
+		"",
+		"def calculate_angle(x1, y1, x2, y2):",
+		"    return np.arctan2(y2 - y1, x2 - x1)",
+		"",
+		"def calculate_distance_and_angle(x1, y1, x2, y2):",
+		"    distance = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)",
+	}
+
+	oldText := JoinLines(oldLines)
+	newText := JoinLines(newLines)
+	diff := ComputeDiff(oldText, newText)
+
+	// Verify the diff: lines 1-2 should be unchanged, lines 3-10 should be additions
+	t.Logf("OldLineCount: %d, NewLineCount: %d", diff.OldLineCount, diff.NewLineCount)
+	t.Logf("Changes count: %d", len(diff.Changes))
+	for k, v := range diff.Changes {
+		t.Logf("  Change[%d]: Type=%v, OldLineNum=%d, NewLineNum=%d", k, v.Type, v.OldLineNum, v.NewLineNum)
+	}
+
+	// Lines 3-10 should be additions
+	assert.True(t, len(diff.Changes) >= 8, fmt.Sprintf("Expected at least 8 changes (additions), got %d", len(diff.Changes)))
+
+	// All changes should be additions anchored at old line 2
+	for k, change := range diff.Changes {
+		assert.Equal(t, ChangeAddition, change.Type,
+			fmt.Sprintf("Change at key %d should be addition", k))
+	}
+
+	// Create stages
+	baseLineOffset := 1
+	result := CreateStages(
+		diff,
+		2,    // cursorRow (at the empty line)
+		0, 0, // no viewport
+		baseLineOffset,
+		3, // proximityThreshold
+		"test.py",
+		newLines,
+		oldLines,
+	)
+
+	assert.NotNil(t, result, "result should not be nil")
+	assert.True(t, len(result.Stages) >= 1, "should have at least 1 stage")
+
+	stage := result.Stages[0]
+	t.Logf("Stage: BufferStart=%d, BufferEnd=%d, Lines=%d", stage.BufferStart, stage.BufferEnd, len(stage.Lines))
+
+	// KEY ASSERTION: BufferStart should be 3 (first new line), not 2 (anchor line)
+	// The additions are inserted AFTER line 2, so they appear starting at line 3
+	assert.Equal(t, 3, stage.BufferStart,
+		fmt.Sprintf("BufferStart should be 3 (insertion point), got %d (anchor)", stage.BufferStart))
+
+	// BufferEnd should also be reasonable (at least 3 for pure additions)
+	assert.True(t, stage.BufferEnd >= stage.BufferStart,
+		fmt.Sprintf("BufferEnd (%d) should be >= BufferStart (%d)", stage.BufferEnd, stage.BufferStart))
+}
+
+// TestMixedDeletionAndAdditions verifies correct staging when old content has a
+// leading line that's deleted while new lines are added at the end.
+// This reproduces a production bug where completion.Lines was trimmed of leading
+// newlines but buffer content still had them.
+func TestMixedDeletionAndAdditions(t *testing.T) {
+	// Scenario: Old has leading empty line, new does not (trimmed by provider)
+	// Old lines 43-46: ["", "// Initialize...", "const...", ""]
+	// New lines: ["// Initialize...", "const...", "", "// Global...", "application.use...", ""]
+	oldLines := []string{"", "// Initialize Hono app", "const app = new Hono()", ""}
+	newLines := []string{"// Initialize Hono app", "const app = new Hono()", "", "// Global middleware", "app.use(cors)", ""}
+
+	oldText := JoinLines(oldLines)
+	newText := JoinLines(newLines)
+	diff := ComputeDiff(oldText, newText)
+
+	t.Logf("OldLineCount: %d, NewLineCount: %d", diff.OldLineCount, diff.NewLineCount)
+	t.Logf("Changes count: %d", len(diff.Changes))
+	for k, v := range diff.Changes {
+		t.Logf("  Change[%d]: Type=%v, OldLineNum=%d, NewLineNum=%d, Content=%q, OldContent=%q",
+			k, v.Type, v.OldLineNum, v.NewLineNum, v.Content, v.OldContent)
+	}
+
+	// We should have:
+	// - 1 deletion (the leading empty line)
+	// - 3 additions (lines 4-6)
+	assert.True(t, len(diff.Changes) >= 1, fmt.Sprintf("Expected at least 1 change, got %d", len(diff.Changes)))
+
+	// Create stages
+	baseLineOffset := 43
+	result := CreateStages(
+		diff,
+		43,   // cursorRow
+		1, 100, // viewport
+		baseLineOffset,
+		3, // proximityThreshold
+		"test.ts",
+		newLines,
+		oldLines,
+	)
+
+	assert.NotNil(t, result, "result should not be nil")
+	assert.True(t, len(result.Stages) >= 1, "should have at least 1 stage")
+
+	stage := result.Stages[0]
+	t.Logf("Stage: BufferStart=%d, BufferEnd=%d, Lines=%d", stage.BufferStart, stage.BufferEnd, len(stage.Lines))
+	t.Logf("Stage Lines: %v", stage.Lines)
+	for i, g := range stage.Groups {
+		t.Logf("  Group[%d]: Type=%s, StartLine=%d, EndLine=%d, Lines=%v", i, g.Type, g.StartLine, g.EndLine, g.Lines)
+	}
+
+	// The stage should include ALL changed lines, not just 1
+	// Since we have deletion + additions, the stage should cover the full range
+	assert.True(t, len(stage.Lines) >= 3,
+		fmt.Sprintf("Stage should have at least 3 lines for meaningful changes, got %d", len(stage.Lines)))
+
+	// BufferStart should be 43 (where the deletion is)
+	assert.Equal(t, 43, stage.BufferStart,
+		fmt.Sprintf("BufferStart should be 43, got %d", stage.BufferStart))
+}
+
+// TestShortBufferDiffComputation tests what happens when the buffer has fewer
+// lines than expected by the completion range. This can happen if the buffer
+// was not fully synced or if there's a race condition.
+func TestShortBufferDiffComputation(t *testing.T) {
+	// Scenario: Completion says StartLine=43, EndLineInc=46 (4 lines expected)
+	// But buffer extraction only gets 1 line (buffer has 43 lines total)
+	// This simulates what happens in processCompletion when buffer is shorter
+
+	// Old: 1 line (buffer only had this much)
+	oldLines := []string{"// Initialize Hono app with types"}
+
+	// New: 6 lines from completion (the model's output)
+	newLines := []string{
+		"// Initialize Hono app with types",
+		"const application = new Hono<ApiContext>();",
+		"",
+		"// Global middleware",
+		"application.use(\"*\", corsMiddleware);",
+		"",
+	}
+
+	oldText := JoinLines(oldLines)
+	newText := JoinLines(newLines)
+	diff := ComputeDiff(oldText, newText)
+
+	t.Logf("OldLineCount: %d, NewLineCount: %d", diff.OldLineCount, diff.NewLineCount)
+	t.Logf("Changes count: %d", len(diff.Changes))
+	for k, v := range diff.Changes {
+		t.Logf("  Change[%d]: Type=%v, OldLineNum=%d, NewLineNum=%d, Content=%q",
+			k, v.Type, v.OldLineNum, v.NewLineNum, v.Content)
+	}
+
+	// The diff should detect that new lines 2-6 are additions
+	// Old line 1 = New line 1 (equal)
+	// New lines 2-6 are additions
+	assert.True(t, len(diff.Changes) >= 5,
+		fmt.Sprintf("Expected at least 5 changes (additions), got %d", len(diff.Changes)))
+
+	// Create stages
+	baseLineOffset := 43
+	result := CreateStages(
+		diff,
+		43,   // cursorRow
+		1, 100, // viewport
+		baseLineOffset,
+		3, // proximityThreshold
+		"test.ts",
+		newLines,
+		oldLines,
+	)
+
+	assert.NotNil(t, result, "result should not be nil")
+	assert.True(t, len(result.Stages) >= 1, "should have at least 1 stage")
+
+	stage := result.Stages[0]
+	t.Logf("Stage: BufferStart=%d, BufferEnd=%d, Lines=%d", stage.BufferStart, stage.BufferEnd, len(stage.Lines))
+	t.Logf("Stage Lines: %v", stage.Lines)
+
+	// The stage should have all 5 additions
+	assert.True(t, len(stage.Lines) >= 5,
+		fmt.Sprintf("Stage should have at least 5 lines (additions), got %d", len(stage.Lines)))
+
+	// BufferStart should be 44 (after the unchanged line 43, for pure additions)
+	assert.Equal(t, 44, stage.BufferStart,
+		fmt.Sprintf("BufferStart should be 44 (insertion point after anchor 43), got %d", stage.BufferStart))
+}
+
+// TestEmptyOldContent tests what happens when old content is empty
+// (buffer has fewer lines than StartLine). All new lines become additions.
+func TestEmptyOldContent(t *testing.T) {
+	// Old: empty (buffer didn't have lines in this range)
+	oldLines := []string{}
+
+	// New: 6 lines from completion
+	newLines := []string{
+		"// Initialize Hono app with types",
+		"const application = new Hono<ApiContext>();",
+		"",
+		"// Global middleware",
+		"application.use(\"*\", corsMiddleware);",
+		"",
+	}
+
+	oldText := JoinLines(oldLines)
+	newText := JoinLines(newLines)
+	diff := ComputeDiff(oldText, newText)
+
+	t.Logf("OldLineCount: %d, NewLineCount: %d", diff.OldLineCount, diff.NewLineCount)
+	t.Logf("Changes count: %d", len(diff.Changes))
+	for k, v := range diff.Changes {
+		t.Logf("  Change[%d]: Type=%v, OldLineNum=%d, NewLineNum=%d, Content=%q",
+			k, v.Type, v.OldLineNum, v.NewLineNum, v.Content)
+	}
+
+	// All 6 new lines should be additions
+	assert.Equal(t, 6, len(diff.Changes), "All 6 lines should be additions")
+
+	// Create stages
+	baseLineOffset := 43
+	result := CreateStages(
+		diff,
+		43,     // cursorRow
+		1, 100, // viewport
+		baseLineOffset,
+		3, // proximityThreshold
+		"test.ts",
+		newLines,
+		oldLines,
+	)
+
+	if result == nil {
+		t.Logf("result is nil - staging returned no stages for empty old content")
+		return
+	}
+
+	for i, stage := range result.Stages {
+		t.Logf("Stage[%d]: BufferStart=%d, BufferEnd=%d, Lines=%d",
+			i, stage.BufferStart, stage.BufferEnd, len(stage.Lines))
+		t.Logf("  Stage Lines: %v", stage.Lines)
+	}
+
+	// All additions should be in a single stage
+	assert.True(t, len(result.Stages) >= 1, "should have at least 1 stage")
+
+	// Total lines should be 6
+	totalLines := 0
+	for _, stage := range result.Stages {
+		totalLines += len(stage.Lines)
+	}
+	assert.Equal(t, 6, totalLines, "Total lines should be 6")
+}
+
+// TestExactProductionScenarioTypeScript reproduces the exact scenario from the
+// production log where a TypeScript file modification resulted in only 1 line
+// being sent to Lua instead of the expected multiple lines.
+func TestExactProductionScenarioTypeScript(t *testing.T) {
+	// From production log:
+	// - Window was 43-50 (8 lines)
+	// - After truncation: replacing lines 43-46 (4 lines) with 6 new lines
+	// - But only 1 line was sent to Lua
+
+	// The original buffer lines 43-46:
+	// The sweep prompt shows the content starts with blank line after file_sep marker
+	oldLines := []string{
+		"",                              // blank line (after <|file_sep|>original/... marker)
+		"// Initialize Hono app with types",
+		"const application = new Hono<ApiContext>();",
+		"",
+	}
+
+	// The completion (after TrimLeft which removed leading newline):
+	// 6 lines as stated in the log
+	newLines := []string{
+		"// Initialize Hono app with types",
+		"const application = new Hono<ApiContext>();",
+		"",
+		"// Global middleware",
+		"application.use(\"*\", corsMiddleware);",
+		"",
+	}
+
+	oldText := JoinLines(oldLines)
+	newText := JoinLines(newLines)
+	diff := ComputeDiff(oldText, newText)
+
+	t.Logf("OldLineCount: %d, NewLineCount: %d", diff.OldLineCount, diff.NewLineCount)
+	t.Logf("Changes count: %d", len(diff.Changes))
+	for k, v := range diff.Changes {
+		t.Logf("  Change[%d]: Type=%v, OldLineNum=%d, NewLineNum=%d, Content=%q, OldContent=%q",
+			k, v.Type, v.OldLineNum, v.NewLineNum, v.Content, v.OldContent)
+	}
+
+	// Expected changes:
+	// - Deletion of old line 1 (empty line)
+	// - Old lines 2-4 map to new lines 1-3 (equal)
+	// - New lines 4-6 are additions
+
+	// Create stages
+	baseLineOffset := 43
+	result := CreateStages(
+		diff,
+		47,     // cursorRow (somewhere in the file, not at the change)
+		1, 100, // viewport
+		baseLineOffset,
+		3, // proximityThreshold
+		"apps/api/src/index.ts",
+		newLines,
+		oldLines,
+	)
+
+	if result == nil {
+		t.Fatal("result should not be nil")
+	}
+	assert.True(t, len(result.Stages) >= 1, "should have at least 1 stage")
+
+	// Log all stages
+	for i, stage := range result.Stages {
+		t.Logf("Stage[%d]: BufferStart=%d, BufferEnd=%d, Lines=%d",
+			i, stage.BufferStart, stage.BufferEnd, len(stage.Lines))
+		t.Logf("  Stage Lines: %v", stage.Lines)
+		for j, g := range stage.Groups {
+			t.Logf("  Group[%d]: Type=%s, StartLine=%d, EndLine=%d", j, g.Type, g.StartLine, g.EndLine)
+		}
+	}
+
+	// The total lines across all stages should be more than 1
+	totalLines := 0
+	for _, stage := range result.Stages {
+		totalLines += len(stage.Lines)
+	}
+	assert.True(t, totalLines >= 3,
+		fmt.Sprintf("Total lines across stages should be at least 3, got %d", totalLines))
+}
+
+// TestStageGroupBounds verifies that stage groups don't exceed stage content bounds.
+func TestStageGroupBounds(t *testing.T) {
+	// Create changes at different line numbers with a gap
+	diff := &DiffResult{
+		Changes: map[int]LineChange{
+			1: {Type: ChangeAddition, NewLineNum: 1, OldLineNum: -1, Content: "line1"},
+			2: {Type: ChangeAddition, NewLineNum: 2, OldLineNum: -1, Content: "line2"},
+			3: {Type: ChangeAddition, NewLineNum: 3, OldLineNum: -1, Content: "line3"},
+			// Gap
+			20: {Type: ChangeAddition, NewLineNum: 20, OldLineNum: -1, Content: "line20"},
+			21: {Type: ChangeAddition, NewLineNum: 21, OldLineNum: -1, Content: "line21"},
+		},
+		OldLineCount: 3,
+		NewLineCount: 21,
+	}
+
+	newLines := make([]string, 21)
+	for i := range newLines {
+		newLines[i] = fmt.Sprintf("line%d", i+1)
+	}
+	oldLines := []string{"old1", "old2", "old3"}
+
+	result := CreateStages(diff, 1, 1, 50, 1, 3, "test.go", newLines, oldLines)
+
+	assert.NotNil(t, result, "result")
+	assert.True(t, len(result.Stages) >= 2, "should have at least 2 stages (gap between 3 and 20)")
+
+	// Each stage's groups should only reference lines within that stage's content
+	for i, stage := range result.Stages {
+		stageLineCount := len(stage.Lines)
+		for _, g := range stage.Groups {
+			assert.True(t, g.StartLine <= stageLineCount,
+				fmt.Sprintf("Stage %d: Group StartLine (%d) exceeds stage line count (%d)",
+					i, g.StartLine, stageLineCount))
+			assert.True(t, g.EndLine <= stageLineCount,
+				fmt.Sprintf("Stage %d: Group EndLine (%d) exceeds stage line count (%d)",
+					i, g.EndLine, stageLineCount))
+		}
 	}
 }

@@ -12,7 +12,6 @@ import (
 
 // Provider implements the types.Provider interface for Sweep Next-Edit model
 // Uses the Qwen2.5-Coder pretrained format with <|file_sep|> tokens
-// Input trimming uses 80% of max_tokens to ensure output fits within generation limit
 type Provider struct {
 	config      *types.ProviderConfig
 	client      *openai.Client
@@ -144,9 +143,9 @@ func (p *Provider) buildPrompt(req *types.CompletionRequest) (string, int, int, 
 	// 1. Build diff history section (already trimmed by engine)
 	diffSection := p.buildDiffSection(req)
 
-	// 2. Trim content around cursor (80% of max_tokens to leave headroom for output)
+	// 2. Trim content around cursor
 	cursorLine := req.CursorRow - 1 // Convert to 0-indexed
-	inputTokenBudget := p.config.ProviderMaxTokens * 80 / 100
+	inputTokenBudget := p.config.ProviderMaxTokens
 	trimmedLines, _, _, trimOffset, didTrim := utils.TrimContentAroundCursor(
 		req.Lines, cursorLine, req.CursorCol, inputTokenBudget)
 
@@ -260,8 +259,12 @@ func (p *Provider) parseCompletion(req *types.CompletionRequest, completionText 
 	// Strip any trailing <|file_sep|> or </s> tokens that might have leaked
 	completionText = strings.TrimSuffix(completionText, "<|file_sep|>")
 	completionText = strings.TrimSuffix(completionText, "</s>")
-	// Trim only leading newlines (preserve indentation) and trailing whitespace
-	completionText = strings.TrimLeft(completionText, "\n")
+
+	// NOTE: Do NOT trim leading newlines. The model preserves the structure of the
+	// original window, including any empty lines at the start. Trimming them causes
+	// a mismatch with the buffer content during diff computation, resulting in
+	// incorrect change detection (e.g., treating unchanged lines as additions).
+	// Only trim trailing whitespace to handle incomplete last lines.
 	completionText = strings.TrimRight(completionText, " \t\n\r")
 
 	// Bounds check for window (handles empty file and edge cases)

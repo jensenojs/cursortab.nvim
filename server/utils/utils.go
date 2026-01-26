@@ -10,20 +10,6 @@ const (
 	AvgCharsPerToken = 2 // Conservative estimate for mixed content (code + JSON)
 )
 
-// EstimateTokenCount estimates the number of tokens in a slice of strings
-func EstimateTokenCount(lines []string) int {
-	if len(lines) == 0 {
-		return 0
-	}
-
-	totalChars := 0
-	for _, line := range lines {
-		totalChars += len(line) + 1 // +1 for newline
-	}
-
-	return (totalChars + AvgCharsPerToken - 1) / AvgCharsPerToken // Ceiling division
-}
-
 // EstimateCharsFromTokens estimates the number of characters for a given token count
 func EstimateCharsFromTokens(tokens int) int {
 	return tokens * AvgCharsPerToken

@@ -29,7 +29,7 @@ type ProviderConfig struct {
 	URL                  string  `json:"url"`
 	Model                string  `json:"model"`
 	Temperature          float64 `json:"temperature"`
-	MaxTokens            int     `json:"max_tokens"` // Max tokens to generate (also drives input trimming with 80% headroom)
+	MaxTokens            int     `json:"max_tokens"` // Max tokens to generate (also drives input trimming)
 	TopK                 int     `json:"top_k"`
 	CompletionTimeout    int     `json:"completion_timeout"` // in milliseconds
 	MaxDiffHistoryTokens int     `json:"max_diff_history_tokens"`
