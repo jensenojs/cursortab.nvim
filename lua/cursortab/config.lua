@@ -32,10 +32,9 @@
 ---@field url string
 ---@field model string
 ---@field temperature number
----@field max_tokens integer
+---@field max_tokens integer Max tokens to generate (also used to derive input context size)
 ---@field top_k integer
 ---@field completion_timeout integer
----@field max_context_tokens integer
 ---@field max_diff_history_tokens integer
 
 ---@class CursortabDebugConfig
@@ -86,10 +85,9 @@ local default_config = {
 		url = "http://localhost:8000", -- URL of the provider server
 		model = "autocomplete", -- Model name
 		temperature = 0.0, -- Sampling temperature
-		max_tokens = 256, -- Max tokens to generate (autocomplete only)
+		max_tokens = 512, -- Max tokens to generate
 		top_k = 50, -- Top-k sampling
 		completion_timeout = 5000, -- Timeout in ms for completion requests
-		max_context_tokens = 512, -- Max context tokens to include around cursor (0 = no limit)
 		max_diff_history_tokens = 512, -- Max tokens for diff history (0 = no limit)
 	},
 
@@ -124,7 +122,7 @@ local deprecated_mappings = {
 	provider_temperature = { "provider", "temperature" },
 	provider_max_tokens = { "provider", "max_tokens" },
 	provider_top_k = { "provider", "top_k" },
-	max_context_tokens = { "provider", "max_context_tokens" },
+	max_context_tokens = nil, -- Removed: now driven by max_tokens with 80% headroom
 	max_diff_history_tokens = { "provider", "max_diff_history_tokens" },
 	-- Debug (old -> new)
 	debug_immediate_shutdown = { "debug", "immediate_shutdown" },
@@ -240,11 +238,17 @@ local function validate_config(cfg)
 		if cfg.provider.completion_timeout and cfg.provider.completion_timeout < 0 then
 			error("[cursortab.nvim] provider.completion_timeout must be >= 0")
 		end
-		if cfg.provider.max_context_tokens and cfg.provider.max_context_tokens < 0 then
-			error("[cursortab.nvim] provider.max_context_tokens must be >= 0")
-		end
 		if cfg.provider.max_diff_history_tokens and cfg.provider.max_diff_history_tokens < 0 then
 			error("[cursortab.nvim] provider.max_diff_history_tokens must be >= 0")
+		end
+		if cfg.provider.max_context_tokens ~= nil then
+			vim.schedule(function()
+				vim.notify(
+					"[cursortab.nvim] provider.max_context_tokens has been removed.\n"
+						.. "Input context is now derived from provider.max_tokens.",
+					vim.log.levels.WARN
+				)
+			end)
 		end
 	end
 end

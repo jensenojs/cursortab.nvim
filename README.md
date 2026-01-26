@@ -76,10 +76,9 @@ require("cursortab").setup({
     url = "http://localhost:8000",     -- URL of the provider server
     model = "autocomplete",            -- Model name
     temperature = 0.0,                 -- Sampling temperature
-    max_tokens = 256,                  -- Max tokens to generate (autocomplete only)
+    max_tokens = 512,                  -- Max tokens to generate
     top_k = 50,                        -- Top-k sampling
     completion_timeout = 5000,         -- Timeout in ms for completion requests
-    max_context_tokens = 512,          -- Max context tokens around cursor (0 = no limit)
     max_diff_history_tokens = 512,     -- Max tokens for diff history (0 = no limit)
   },
 
@@ -244,7 +243,7 @@ For the best experience, use **Sweep** with the `sweep-next-edit-1.5b` model.
 <summary>Why are completions slow?</summary>
 
 1. Use a smaller or more quantized model (e.g., Q4 instead of Q8)
-2. Decrease `provider.max_context_tokens` to send less context
+2. Decrease `provider.max_tokens` to reduce output length (also limits input context)
 
 </details>
 
@@ -253,6 +252,7 @@ For the best experience, use **Sweep** with the `sweep-next-edit-1.5b` model.
 
 1. Update to the latest version and restart the daemon with `:CursortabRestart`
 2. Increase `provider.completion_timeout` (default: 5000ms) to 10000 or more if your model is slow
+3. Increase `provider.max_tokens` to give the model more surrounding context (tradeoff: slower completions)
 
 </details>
 

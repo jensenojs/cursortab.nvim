@@ -78,10 +78,9 @@ Full configuration with defaults: >lua
       url = "http://localhost:8000",
       model = "autocomplete",
       temperature = 0.0,
-      max_tokens = 256,
+      max_tokens = 512,
       top_k = 50,
       completion_timeout = 5000,    -- ms
-      max_context_tokens = 512,
       max_diff_history_tokens = 512,
     },
 
@@ -150,18 +149,14 @@ PROVIDER OPTIONS                                    *cursortab-config-provider*
       Sampling temperature for generation.
 
   `max_tokens`
-      Maximum tokens to generate (autocomplete only).
+      Maximum tokens to generate. For sweep/zeta providers, this also
+      determines the input context size (trimmed to fit within output budget).
 
   `top_k`
       Top-k sampling parameter.
 
   `completion_timeout`
       Timeout in milliseconds for completion requests.
-
-  `max_context_tokens`
-      Maximum context tokens to include around the cursor position. This
-      controls how much surrounding code is sent as context, not the total
-      tokens sent to the provider endpoint. Set to 0 for no limit.
 
   `max_diff_history_tokens`
       Maximum tokens for diff history context. Set to 0 for no limit.

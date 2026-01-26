@@ -12,7 +12,7 @@ import (
 
 // Provider implements the types.Provider interface for Sweep Next-Edit model
 // Uses the Qwen2.5-Coder pretrained format with <|file_sep|> tokens
-// Note: Generation limit uses config.MaxTokens (max_context_tokens) since Sweep regenerates the entire window
+// Input trimming uses 80% of max_tokens to ensure output fits within generation limit
 type Provider struct {
 	config      *types.ProviderConfig
 	client      *openai.Client
@@ -42,12 +42,11 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 	prompt, windowStart, windowEnd, maxLines := p.buildPrompt(req)
 
 	// Create the completion request with streaming enabled
-	// Sweep regenerates the entire window, so max_tokens must match max_context_tokens
 	completionReq := &openai.CompletionRequest{
 		Model:       p.model,
 		Prompt:      prompt,
 		Temperature: p.temperature,
-		MaxTokens:   p.config.MaxTokens,
+		MaxTokens:   p.config.ProviderMaxTokens,
 		Stop:        []string{"<|file_sep|>", "</s>"},
 		N:           1,
 		Echo:        false,
@@ -145,10 +144,11 @@ func (p *Provider) buildPrompt(req *types.CompletionRequest) (string, int, int, 
 	// 1. Build diff history section (already trimmed by engine)
 	diffSection := p.buildDiffSection(req)
 
-	// 2. Trim content around cursor using max_context_tokens
+	// 2. Trim content around cursor (80% of max_tokens to leave headroom for output)
 	cursorLine := req.CursorRow - 1 // Convert to 0-indexed
+	inputTokenBudget := p.config.ProviderMaxTokens * 80 / 100
 	trimmedLines, _, _, trimOffset, didTrim := utils.TrimContentAroundCursor(
-		req.Lines, cursorLine, req.CursorCol, p.config.MaxTokens)
+		req.Lines, cursorLine, req.CursorCol, inputTokenBudget)
 
 	// Calculate window bounds for parseCompletion
 	windowStart := trimOffset

@@ -36,7 +36,6 @@ func NewDaemon(config Config) (*Daemon, error) {
 	provider, err := provider.NewProvider(
 		types.ProviderType(config.Provider.Type),
 		&types.ProviderConfig{
-			MaxTokens:           config.Provider.MaxContextTokens,
 			ProviderURL:         config.Provider.URL,
 			ProviderModel:       config.Provider.Model,
 			ProviderTemperature: config.Provider.Temperature,

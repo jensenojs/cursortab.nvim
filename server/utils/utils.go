@@ -7,7 +7,7 @@ import (
 
 // Token estimation constants
 const (
-	AvgCharsPerToken = 4 // Rough estimation: 1 token ≈ 4 characters
+	AvgCharsPerToken = 2 // Conservative estimate for mixed content (code + JSON)
 )
 
 // EstimateTokenCount estimates the number of tokens in a slice of strings

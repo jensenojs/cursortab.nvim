@@ -138,11 +138,9 @@ const (
 
 // ProviderConfig holds configuration for providers
 type ProviderConfig struct {
-	MaxTokens int // Maximum tokens to send in a request (0 = no limit)
-	// Generic provider configuration (used by Zeta, autocomplete, etc.)
 	ProviderURL         string  // URL of the provider server (e.g., "http://localhost:8000")
 	ProviderModel       string  // Model name
 	ProviderTemperature float64 // Sampling temperature
-	ProviderMaxTokens   int     // Max tokens to generate
+	ProviderMaxTokens   int     // Max tokens to generate (also drives input trimming with 80% headroom)
 	ProviderTopK        int     // Top-k sampling (used by some providers)
 }

@@ -11,7 +11,7 @@ import (
 )
 
 // Provider implements the types.Provider interface for Zeta (vLLM with OpenAI-style API)
-// Note: Generation limit uses config.MaxTokens (max_context_tokens) since Zeta regenerates the editable region
+// Input trimming uses 80% of max_tokens to ensure output fits within generation limit
 type Provider struct {
 	config      *types.ProviderConfig
 	client      *openai.Client
@@ -51,12 +51,11 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 	prompt := p.buildInstructionPrompt(userEdits, diagnosticsText, userExcerpt)
 
 	// Create the completion request
-	// Zeta regenerates the editable region, so max_tokens must match max_context_tokens
 	completionReq := &openai.CompletionRequest{
 		Model:       p.model,
 		Prompt:      prompt,
 		Temperature: p.temperature,
-		MaxTokens:   p.config.MaxTokens,
+		MaxTokens:   p.config.ProviderMaxTokens,
 		Stop:        []string{"\n<|editable_region_end|>"},
 		N:           1,
 		Echo:        false,
@@ -281,9 +280,10 @@ func (p *Provider) buildPromptWithSpecialTokens(req *types.CompletionRequest) (s
 	// Convert cursor to 0-indexed for calculations
 	cursorLine := cursorRow - 1
 
-	// Use token-based trimming for editable region
+	// Trim content around cursor (80% of max_tokens to leave headroom for output)
+	inputTokenBudget := p.config.ProviderMaxTokens * 80 / 100
 	trimmedLines, _, _, trimOffset, didTrim := utils.TrimContentAroundCursor(
-		req.Lines, cursorLine, cursorCol, p.config.MaxTokens)
+		req.Lines, cursorLine, cursorCol, inputTokenBudget)
 
 	// Calculate editable region bounds from trim result
 	editableStart := trimOffset

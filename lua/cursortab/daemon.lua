@@ -66,7 +66,6 @@ local function start_daemon()
 			max_tokens = cfg.provider.max_tokens,
 			top_k = cfg.provider.top_k,
 			completion_timeout = cfg.provider.completion_timeout,
-			max_context_tokens = cfg.provider.max_context_tokens,
 			max_diff_history_tokens = cfg.provider.max_diff_history_tokens,
 		},
 		debug = {
