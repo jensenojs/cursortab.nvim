@@ -10,12 +10,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"cursortab/buffer"
 	"cursortab/logger"
 	"cursortab/text"
 	"cursortab/types"
 	"cursortab/utils"
-
-	"github.com/neovim/go-client/nvim"
 )
 
 type state int
@@ -56,8 +55,7 @@ type Engine struct {
 	WorkspaceID   string
 
 	provider        types.Provider
-	n               *nvim.Nvim
-	buffer          *text.Buffer
+	buffer          buffer.Client
 	state           state
 	ctx             context.Context
 	currentCancel   context.CancelFunc
@@ -75,7 +73,7 @@ type Engine struct {
 
 	// Completion state
 	completions  []*types.Completion
-	applyBatch   *nvim.Batch
+	applyBatch   buffer.Batch
 	cursorTarget *types.CursorPredictionTarget
 
 	// Staged completion state (for multi-stage completions)
@@ -96,7 +94,7 @@ type Engine struct {
 	fileStateStore map[string]*FileState
 }
 
-func NewEngine(provider types.Provider, config EngineConfig) (*Engine, error) {
+func NewEngine(provider types.Provider, buf buffer.Client, config EngineConfig) (*Engine, error) {
 	workspacePath, err := os.Getwd()
 	if err != nil {
 		logger.Warn("error getting current directory, using home: %v", err)
@@ -104,28 +102,20 @@ func NewEngine(provider types.Provider, config EngineConfig) (*Engine, error) {
 	}
 	workspaceID := fmt.Sprintf("%s-%d", workspacePath, os.Getpid())
 
-	buffer, err := text.NewBuffer(text.BufferConfig{
-		NsID: config.NsID,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	return &Engine{
-		WorkspacePath:           workspacePath,
-		WorkspaceID:             workspaceID,
-		provider:                provider,
-		n:                       nil, // Will be set later via SetNvim
-		buffer:                  buffer,
-		state:                   stateIdle,
-		ctx:                     nil,
-		eventChan:               make(chan Event, 100),
-		config:                  config,
-		idleTimer:               nil,
-		textChangeTimer:         nil,
-		mu:                      sync.RWMutex{},
-		completions:             nil,
-		cursorTarget:            nil,
+		WorkspacePath:          workspacePath,
+		WorkspaceID:            workspaceID,
+		provider:               provider,
+		buffer:                 buf,
+		state:                  stateIdle,
+		ctx:                    nil,
+		eventChan:              make(chan Event, 100),
+		config:                 config,
+		idleTimer:              nil,
+		textChangeTimer:        nil,
+		mu:                     sync.RWMutex{},
+		completions:            nil,
+		cursorTarget:           nil,
 		prefetchedCompletions:  nil,
 		prefetchedCursorTarget: nil,
 		prefetchState:          prefetchNone,
@@ -218,8 +208,8 @@ func (e *Engine) clearState(opts ClearOptions) {
 	if opts.ClearCursorTarget {
 		e.cursorTarget = nil
 	}
-	if opts.CallOnReject && e.n != nil {
-		e.buffer.OnReject(e.n)
+	if opts.CallOnReject {
+		e.buffer.ClearUI()
 	}
 	e.completions = nil
 	e.applyBatch = nil
@@ -379,22 +369,23 @@ func (e *Engine) reject() {
 }
 
 // syncBuffer syncs the buffer state and handles file switching.
-// This should be called instead of buffer.SyncIn directly to ensure
+// This should be called instead of buffer.Sync directly to ensure
 // file context is properly saved/restored when switching files.
 func (e *Engine) syncBuffer() {
-	if e.n == nil {
+	result, err := e.buffer.Sync(e.WorkspacePath)
+	if err != nil {
+		logger.Debug("sync error: %v", err)
 		return
 	}
 
-	result := e.buffer.SyncIn(e.n, e.WorkspacePath)
 	if result != nil && result.BufferChanged {
-		e.handleFileSwitch(result.OldPath, result.NewPath, e.buffer.Lines)
+		e.handleFileSwitch(result.OldPath, result.NewPath, e.buffer.Lines())
 	}
 }
 
 func (e *Engine) requestCompletion(source types.CompletionSource) {
 	// Check if stopped before making request
-	if e.stopped || e.n == nil {
+	if e.stopped {
 		return
 	}
 
@@ -411,15 +402,15 @@ func (e *Engine) requestCompletion(source types.CompletionSource) {
 			Source:            source,
 			WorkspacePath:     e.WorkspacePath,
 			WorkspaceID:       e.WorkspaceID,
-			FilePath:          e.buffer.Path,
-			Lines:             e.buffer.Lines,
-			Version:           e.buffer.Version,
-			PreviousLines:     e.buffer.PreviousLines,
+			FilePath:          e.buffer.Path(),
+			Lines:             e.buffer.Lines(),
+			Version:           e.buffer.Version(),
+			PreviousLines:     e.buffer.PreviousLines(),
 			FileDiffHistories: e.getAllFileDiffHistories(),
-			CursorRow:         e.buffer.Row,
-			CursorCol:         e.buffer.Col,
+			CursorRow:         e.buffer.Row(),
+			CursorCol:         e.buffer.Col(),
 			ViewportHeight:    e.getViewportHeightConstraint(),
-			LinterErrors:      e.buffer.GetProviderLinterErrors(e.n),
+			LinterErrors:      e.buffer.LinterErrors(),
 		})
 
 		if err != nil {
@@ -448,7 +439,7 @@ func (e *Engine) handleCursorTarget() {
 		return
 	}
 
-	distance := abs(int(e.cursorTarget.LineNumber) - e.buffer.Row)
+	distance := abs(int(e.cursorTarget.LineNumber) - e.buffer.Row())
 	if distance <= e.config.CursorPrediction.DistThreshold {
 		// Close enough - don't show cursor prediction
 
@@ -463,10 +454,10 @@ func (e *Engine) handleCursorTarget() {
 
 			// Calculate distance from cursor to next stage
 			var stageDistance int
-			if e.buffer.Row < stageStart {
-				stageDistance = stageStart - e.buffer.Row
-			} else if e.buffer.Row > stageEnd {
-				stageDistance = e.buffer.Row - stageEnd
+			if e.buffer.Row() < stageStart {
+				stageDistance = stageStart - e.buffer.Row()
+			} else if e.buffer.Row() > stageEnd {
+				stageDistance = e.buffer.Row() - stageEnd
 			} else {
 				stageDistance = 0 // Cursor is within the stage range
 			}
@@ -478,12 +469,12 @@ func (e *Engine) handleCursorTarget() {
 			}
 			// Stage is far - show cursor prediction to it instead
 			e.cursorTarget = &types.CursorPredictionTarget{
-				RelativePath:    e.buffer.Path,
+				RelativePath:    e.buffer.Path(),
 				LineNumber:      int32(stageStart),
 				ShouldRetrigger: false,
 			}
 			e.state = stateHasCursorTarget
-			e.buffer.OnCursorPredictionReady(e.n, stageStart)
+			e.buffer.ShowCursorTarget(stageStart)
 			return
 		}
 
@@ -502,7 +493,7 @@ func (e *Engine) handleCursorTarget() {
 
 	// Far away - show cursor prediction to the target line
 	e.state = stateHasCursorTarget
-	e.buffer.OnCursorPredictionReady(e.n, int(e.cursorTarget.LineNumber))
+	e.buffer.ShowCursorTarget(int(e.cursorTarget.LineNumber))
 }
 
 func abs(x int) int {
@@ -531,7 +522,7 @@ func (e *Engine) acceptCompletion() {
 	}
 
 	// Commit pending file changes only after successful apply
-	e.buffer.CommitPendingEdit()
+	e.buffer.CommitPending()
 
 	// After commit, save file state for context persistence across file switches
 	e.saveCurrentFileState()
@@ -604,24 +595,24 @@ func (e *Engine) acceptCompletion() {
 
 // saveCurrentFileState saves the current buffer state to the file state store
 func (e *Engine) saveCurrentFileState() {
-	if e.buffer.Path == "" {
+	if e.buffer.Path() == "" {
 		return
 	}
 
 	state := &FileState{
-		PreviousLines: copyLines(e.buffer.PreviousLines),
-		DiffHistories: copyDiffs(e.buffer.DiffHistories),
-		OriginalLines: copyLines(e.buffer.GetOriginalLines()),
+		PreviousLines: copyLines(e.buffer.PreviousLines()),
+		DiffHistories: copyDiffs(e.buffer.DiffHistories()),
+		OriginalLines: copyLines(e.buffer.OriginalLines()),
 		LastAccessNs:  time.Now().UnixNano(),
-		Version:       e.buffer.Version,
+		Version:       e.buffer.Version(),
 	}
 
-	e.fileStateStore[e.buffer.Path] = state
+	e.fileStateStore[e.buffer.Path()] = state
 	e.trimFileStateStore(2) // Keep at most 2 files
 }
 
 // handleFileSwitch manages file state when switching between files.
-// Called after SyncIn detects a buffer change. Returns true if state was restored.
+// Called after Sync detects a buffer change. Returns true if state was restored.
 func (e *Engine) handleFileSwitch(oldPath, newPath string, currentLines []string) bool {
 	if oldPath == newPath {
 		return false
@@ -630,11 +621,11 @@ func (e *Engine) handleFileSwitch(oldPath, newPath string, currentLines []string
 	// Save state of the file we're leaving
 	if oldPath != "" {
 		state := &FileState{
-			PreviousLines: copyLines(e.buffer.PreviousLines),
-			DiffHistories: copyDiffs(e.buffer.DiffHistories),
-			OriginalLines: copyLines(e.buffer.GetOriginalLines()),
+			PreviousLines: copyLines(e.buffer.PreviousLines()),
+			DiffHistories: copyDiffs(e.buffer.DiffHistories()),
+			OriginalLines: copyLines(e.buffer.OriginalLines()),
 			LastAccessNs:  time.Now().UnixNano(),
-			Version:       e.buffer.Version,
+			Version:       e.buffer.Version(),
 		}
 		e.fileStateStore[oldPath] = state
 	}
@@ -643,7 +634,7 @@ func (e *Engine) handleFileSwitch(oldPath, newPath string, currentLines []string
 	if state, exists := e.fileStateStore[newPath]; exists {
 		if e.isFileStateValid(state, currentLines) {
 			// Restore the saved state
-			e.buffer.SetFileContext(state.PreviousLines, state.DiffHistories, state.OriginalLines)
+			e.buffer.SetFileContext(state.PreviousLines, state.OriginalLines, state.DiffHistories)
 			state.LastAccessNs = time.Now().UnixNano()
 			logger.Debug("restored file state for %s (version=%d, diffs=%d)", newPath, state.Version, len(state.DiffHistories))
 			return true
@@ -654,7 +645,7 @@ func (e *Engine) handleFileSwitch(oldPath, newPath string, currentLines []string
 	}
 
 	// New file or stale state - initialize fresh (PreviousLines stays nil for new files)
-	e.buffer.SetFileContext(nil, nil, copyLines(currentLines))
+	e.buffer.SetFileContext(nil, copyLines(currentLines), nil)
 	return false
 }
 
@@ -736,12 +727,12 @@ func (e *Engine) trimFileStateStore(maxFiles int) {
 // This prevents context pollution from other files' diffs.
 func (e *Engine) getAllFileDiffHistories() []*types.FileDiffHistory {
 	// Only return diffs for the current file
-	if e.buffer.Path == "" || len(e.buffer.DiffHistories) == 0 {
+	if e.buffer.Path() == "" || len(e.buffer.DiffHistories()) == 0 {
 		return nil
 	}
 
 	// Copy to ensure immutability
-	diffs := copyDiffs(e.buffer.DiffHistories)
+	diffs := copyDiffs(e.buffer.DiffHistories())
 
 	// Apply token limiting if configured
 	if e.config.MaxDiffTokens > 0 {
@@ -753,7 +744,7 @@ func (e *Engine) getAllFileDiffHistories() []*types.FileDiffHistory {
 	}
 
 	return []*types.FileDiffHistory{{
-		FileName:    e.buffer.Path,
+		FileName:    e.buffer.Path(),
 		DiffHistory: diffs,
 	}}
 }
@@ -779,18 +770,16 @@ func copyDiffs(diffs []*types.DiffEntry) []*types.DiffEntry {
 }
 
 func (e *Engine) acceptCursorTarget() {
-	if e.n == nil || e.cursorTarget == nil {
+	if e.cursorTarget == nil {
 		return
 	}
 
-	err := e.buffer.MoveCursorToStartOfLine(e.n, int(e.cursorTarget.LineNumber), true, true)
+	err := e.buffer.MoveCursor(int(e.cursorTarget.LineNumber), true, true)
 	if err != nil {
 		logger.Error("error moving cursor: %v", err)
 	}
 
-	if e.n != nil {
-		e.buffer.OnReject(e.n)
-	}
+	e.buffer.ClearUI()
 
 	// Handle staged completions: if there are more stages, show the next stage
 	if e.stagedCompletion != nil && e.stagedCompletion.CurrentIdx < len(e.stagedCompletion.Stages) {
@@ -840,9 +829,8 @@ func (e *Engine) showCurrentStage() {
 	e.cursorTarget = stage.CursorTarget
 	e.state = stateHasCompletion
 
-	// Use OnCompletionReadyWithGroups with pre-computed groups from stage
-	e.applyBatch = e.buffer.OnCompletionReadyWithGroups(
-		e.n,
+	// Use PrepareCompletion with pre-computed groups from stage
+	e.applyBatch = e.buffer.PrepareCompletion(
 		stage.BufferStart,
 		stage.BufferEnd,
 		stage.Lines,
@@ -850,9 +838,10 @@ func (e *Engine) showCurrentStage() {
 	)
 
 	// Store original buffer lines for partial typing optimization
+	bufferLines := e.buffer.Lines()
 	e.completionOriginalLines = nil
-	for i := stage.BufferStart; i <= stage.BufferEnd && i-1 < len(e.buffer.Lines); i++ {
-		e.completionOriginalLines = append(e.completionOriginalLines, e.buffer.Lines[i-1])
+	for i := stage.BufferStart; i <= stage.BufferEnd && i-1 < len(bufferLines); i++ {
+		e.completionOriginalLines = append(e.completionOriginalLines, bufferLines[i-1])
 	}
 }
 
@@ -873,7 +862,7 @@ func (e *Engine) getStage(idx int) *text.Stage {
 // Called from both fresh completion responses and prefetch paths.
 // Returns true if completion was processed successfully, false if no changes.
 func (e *Engine) processCompletion(completion *types.Completion, cursorTarget *types.CursorPredictionTarget) bool {
-	if e.n == nil || completion == nil {
+	if completion == nil {
 		return false
 	}
 
@@ -884,17 +873,19 @@ func (e *Engine) processCompletion(completion *types.Completion, cursorTarget *t
 	}
 
 	// Extract original lines from buffer
+	bufferLines := e.buffer.Lines()
 	var originalLines []string
-	for i := completion.StartLine; i <= completion.EndLineInc && i-1 < len(e.buffer.Lines); i++ {
-		originalLines = append(originalLines, e.buffer.Lines[i-1])
+	for i := completion.StartLine; i <= completion.EndLineInc && i-1 < len(bufferLines); i++ {
+		originalLines = append(originalLines, bufferLines[i-1])
 	}
 
 	// Analyze diff with viewport awareness
+	viewportTop, viewportBottom := e.buffer.ViewportBounds()
 	originalText := text.JoinLines(originalLines)
 	newText := text.JoinLines(completion.Lines)
 	diffResult := text.AnalyzeDiffForStagingWithViewport(
 		originalText, newText,
-		e.buffer.ViewportTop, e.buffer.ViewportBottom,
+		viewportTop, viewportBottom,
 		completion.StartLine,
 	)
 
@@ -902,7 +893,7 @@ func (e *Engine) processCompletion(completion *types.Completion, cursorTarget *t
 	resolvedCursorTarget := cursorTarget
 	if resolvedCursorTarget == nil && e.config.CursorPrediction.AutoAdvance && e.config.CursorPrediction.Enabled {
 		resolvedCursorTarget = &types.CursorPredictionTarget{
-			RelativePath:    e.buffer.Path,
+			RelativePath:    e.buffer.Path(),
 			LineNumber:      int32(completion.EndLineInc),
 			ShouldRetrigger: true,
 		}
@@ -913,11 +904,11 @@ func (e *Engine) processCompletion(completion *types.Completion, cursorTarget *t
 	// - StagingResult with FirstNeedsNavigation: whether to show cursor prediction UI
 	stagingResult := text.CreateStages(
 		diffResult,
-		e.buffer.Row,
-		e.buffer.ViewportTop, e.buffer.ViewportBottom,
+		e.buffer.Row(),
+		viewportTop, viewportBottom,
 		completion.StartLine,
 		e.config.CursorPrediction.DistThreshold,
-		e.buffer.Path,
+		e.buffer.Path(),
 		completion.Lines,
 		originalLines, // oldLines parameter
 	)
@@ -931,19 +922,19 @@ func (e *Engine) processCompletion(completion *types.Completion, cursorTarget *t
 		e.stagedCompletion = &types.StagedCompletion{
 			Stages:     stagesAny,
 			CurrentIdx: 0,
-			SourcePath: e.buffer.Path,
+			SourcePath: e.buffer.Path(),
 		}
 
 		if stagingResult.FirstNeedsNavigation {
 			// First stage is outside viewport or far from cursor - show cursor prediction
 			firstStage := stagingResult.Stages[0]
 			e.cursorTarget = &types.CursorPredictionTarget{
-				RelativePath:    e.buffer.Path,
+				RelativePath:    e.buffer.Path(),
 				LineNumber:      int32(firstStage.BufferStart),
 				ShouldRetrigger: false,
 			}
 			e.state = stateHasCursorTarget
-			e.buffer.OnCursorPredictionReady(e.n, firstStage.BufferStart)
+			e.buffer.ShowCursorTarget(firstStage.BufferStart)
 			return true
 		}
 
@@ -956,7 +947,7 @@ func (e *Engine) processCompletion(completion *types.Completion, cursorTarget *t
 	e.state = stateHasCompletion
 	e.completions = []*types.Completion{completion}
 	e.cursorTarget = resolvedCursorTarget
-	e.applyBatch = e.buffer.OnCompletionReady(e.n, completion.StartLine, completion.EndLineInc, completion.Lines)
+	e.applyBatch = e.buffer.PrepareCompletion(completion.StartLine, completion.EndLineInc, completion.Lines, nil)
 
 	// Store original buffer lines for partial typing optimization
 	e.completionOriginalLines = originalLines
@@ -964,8 +955,9 @@ func (e *Engine) processCompletion(completion *types.Completion, cursorTarget *t
 	return true
 }
 
-// SetNvim sets a new nvim instance for the engine (used for socket connections)
-func (e *Engine) SetNvim(n *nvim.Nvim) {
+// RegisterEventHandler registers the event handler for nvim RPC callbacks.
+// This should be called after buffer.SetClient has been called with a valid nvim connection.
+func (e *Engine) RegisterEventHandler() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -974,10 +966,8 @@ func (e *Engine) SetNvim(n *nvim.Nvim) {
 		return
 	}
 
-	e.n = n
-
-	// Re-register the event handler for the new connection
-	if err := e.n.RegisterHandler("cursortab_event", func(n *nvim.Nvim, event string) {
+	// Register the event handler for the new connection
+	if err := e.buffer.RegisterEventHandler(func(event string) {
 		e.mu.RLock()
 		stopped := e.stopped
 		e.mu.RUnlock()
@@ -1007,8 +997,9 @@ func (e *Engine) getViewportHeightConstraint() int {
 		return 0
 	}
 	// Distance from cursor to end of viewport
-	if e.buffer.ViewportBottom > 0 && e.buffer.Row > 0 {
-		if constraint := e.buffer.ViewportBottom - e.buffer.Row; constraint > 0 {
+	_, viewportBottom := e.buffer.ViewportBounds()
+	if viewportBottom > 0 && e.buffer.Row() > 0 {
+		if constraint := viewportBottom - e.buffer.Row(); constraint > 0 {
 			return constraint
 		}
 	}

@@ -180,17 +180,11 @@ func (e *Engine) doRejectAndStartIdleTimer(event Event) {
 }
 
 func (e *Engine) doAcceptCompletion(event Event) {
-	if e.n == nil {
-		return
-	}
 	e.acceptCompletion()
 	// Note: acceptCompletion handles state transitions internally
 }
 
 func (e *Engine) doAcceptCursorTarget(event Event) {
-	if e.n == nil {
-		return
-	}
 	e.acceptCursorTarget()
 	// Note: acceptCursorTarget handles state transitions internally
 }

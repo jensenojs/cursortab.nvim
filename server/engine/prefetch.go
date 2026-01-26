@@ -40,7 +40,7 @@ func (s prefetchState) String() string {
 
 // requestPrefetch requests a completion for a specific cursor position without changing the engine state
 func (e *Engine) requestPrefetch(source types.CompletionSource, overrideRow int, overrideCol int) {
-	if e.stopped || e.n == nil {
+	if e.stopped {
 		return
 	}
 
@@ -59,11 +59,11 @@ func (e *Engine) requestPrefetch(source types.CompletionSource, overrideRow int,
 	e.prefetchState = prefetchInFlight
 
 	// Snapshot required values to avoid races with buffer mutation
-	lines := append([]string{}, e.buffer.Lines...)
-	previousLines := append([]string{}, e.buffer.PreviousLines...)
-	version := e.buffer.Version
-	filePath := e.buffer.Path
-	linterErrors := e.buffer.GetProviderLinterErrors(e.n)
+	lines := append([]string{}, e.buffer.Lines()...)
+	previousLines := append([]string{}, e.buffer.PreviousLines()...)
+	version := e.buffer.Version()
+	filePath := e.buffer.Path()
+	linterErrors := e.buffer.LinterErrors()
 	viewportHeight := e.getViewportHeightConstraint()
 
 	go func() {
@@ -114,30 +114,31 @@ func (e *Engine) handlePrefetchReady(resp *types.CompletionResponse) {
 	// If we were waiting for prefetch to show cursor prediction (last stage case),
 	// check if first change is close enough to show completion, otherwise show cursor prediction
 	if previousPrefetchState == prefetchWaitingForCursorPrediction {
-		if len(e.prefetchedCompletions) > 0 && e.n != nil {
+		if len(e.prefetchedCompletions) > 0 {
 			comp := e.prefetchedCompletions[0]
 			// Extract old lines from buffer for the completion range
+			bufferLines := e.buffer.Lines()
 			var oldLines []string
-			for i := comp.StartLine; i <= comp.EndLineInc && i-1 < len(e.buffer.Lines); i++ {
-				oldLines = append(oldLines, e.buffer.Lines[i-1])
+			for i := comp.StartLine; i <= comp.EndLineInc && i-1 < len(bufferLines); i++ {
+				oldLines = append(oldLines, bufferLines[i-1])
 			}
 			// Find the first line that actually differs
 			targetLine := text.FindFirstChangedLine(oldLines, comp.Lines, comp.StartLine-1)
 
 			if targetLine > 0 {
-				distance := abs(targetLine - e.buffer.Row)
+				distance := abs(targetLine - e.buffer.Row())
 				if distance <= e.config.CursorPrediction.DistThreshold {
 					// Close enough - show completion immediately
 					e.tryShowPrefetchedCompletion()
 				} else {
 					// Far away - show cursor prediction to that line
 					e.cursorTarget = &types.CursorPredictionTarget{
-						RelativePath:    e.buffer.Path,
+						RelativePath:    e.buffer.Path(),
 						LineNumber:      int32(targetLine),
 						ShouldRetrigger: false, // Will use prefetched data
 					}
 					e.state = stateHasCursorTarget
-					e.buffer.OnCursorPredictionReady(e.n, targetLine)
+					e.buffer.ShowCursorTarget(targetLine)
 				}
 			}
 		}
@@ -147,7 +148,7 @@ func (e *Engine) handlePrefetchReady(resp *types.CompletionResponse) {
 // tryShowPrefetchedCompletion attempts to show prefetched completion immediately.
 // Returns true if completion was shown, false otherwise.
 func (e *Engine) tryShowPrefetchedCompletion() bool {
-	if len(e.prefetchedCompletions) == 0 || e.n == nil {
+	if len(e.prefetchedCompletions) == 0 {
 		return false
 	}
 
@@ -186,7 +187,7 @@ func (e *Engine) handlePrefetchError(err error) {
 
 // handleDeferredCursorTarget handles cursor target logic that was deferred due to prefetch in progress
 func (e *Engine) handleDeferredCursorTarget() {
-	if e.n == nil || e.cursorTarget == nil {
+	if e.cursorTarget == nil {
 		return
 	}
 

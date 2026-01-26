@@ -71,7 +71,7 @@ type Event struct {
 // handleTextChangeImpl handles text change when we have an active completion.
 // It checks if the user typed content that matches the prediction.
 func (e *Engine) handleTextChangeImpl() {
-	if len(e.completions) == 0 || e.n == nil {
+	if len(e.completions) == 0 {
 		e.reject()
 		e.startTextChangeTimer()
 		return
@@ -112,13 +112,14 @@ func (e *Engine) checkTypingMatchesPrediction() (bool, bool) {
 	completion := e.completions[0]
 	targetLines := completion.Lines
 	originalLines := e.completionOriginalLines
+	bufferLines := e.buffer.Lines()
 
 	if len(targetLines) == 0 {
 		return false, false
 	}
 
 	startIdx := completion.StartLine - 1 // Convert to 0-indexed
-	if startIdx < 0 || startIdx >= len(e.buffer.Lines) {
+	if startIdx < 0 || startIdx >= len(bufferLines) {
 		return false, false
 	}
 
@@ -130,8 +131,8 @@ func (e *Engine) checkTypingMatchesPrediction() (bool, bool) {
 	// Get current buffer lines in the target range
 	targetEndIdx := startIdx + len(targetLines) - 1
 	var currentLines []string
-	for i := startIdx; i <= targetEndIdx && i < len(e.buffer.Lines); i++ {
-		currentLines = append(currentLines, e.buffer.Lines[i])
+	for i := startIdx; i <= targetEndIdx && i < len(bufferLines); i++ {
+		currentLines = append(currentLines, bufferLines[i])
 	}
 
 	if len(currentLines) == 0 {
@@ -186,10 +187,6 @@ func (e *Engine) checkTypingMatchesPrediction() (bool, bool) {
 
 // handleCompletionReadyImpl contains the actual completion handling logic
 func (e *Engine) handleCompletionReadyImpl(response *types.CompletionResponse) {
-	if e.n == nil {
-		return
-	}
-
 	// Sync buffer to get current cursor position - the user may have moved
 	// the cursor while we were waiting for the completion
 	e.syncBuffer()

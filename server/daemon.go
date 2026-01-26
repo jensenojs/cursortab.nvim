@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"cursortab/buffer"
 	"cursortab/engine"
 	"cursortab/logger"
 	"cursortab/provider"
@@ -22,6 +23,7 @@ import (
 type Daemon struct {
 	config      Config
 	provider    types.Provider
+	buffer      *buffer.Buffer
 	engine      *engine.Engine
 	listener    net.Listener
 	socketPath  string
@@ -33,7 +35,7 @@ type Daemon struct {
 }
 
 func NewDaemon(config Config) (*Daemon, error) {
-	provider, err := provider.NewProvider(
+	prov, err := provider.NewProvider(
 		types.ProviderType(config.Provider.Type),
 		&types.ProviderConfig{
 			ProviderURL:         config.Provider.URL,
@@ -47,7 +49,11 @@ func NewDaemon(config Config) (*Daemon, error) {
 		return nil, err
 	}
 
-	eng, err := engine.NewEngine(provider, engine.EngineConfig{
+	buf := buffer.New(buffer.Config{
+		NsID: config.NsID,
+	})
+
+	eng, err := engine.NewEngine(prov, buf, engine.EngineConfig{
 		NsID:                config.NsID,
 		CompletionTimeout:   time.Duration(config.Provider.CompletionTimeout) * time.Millisecond,
 		IdleCompletionDelay: time.Duration(config.Behavior.IdleCompletionDelay) * time.Millisecond,
@@ -67,7 +73,8 @@ func NewDaemon(config Config) (*Daemon, error) {
 
 	return &Daemon{
 		config:     config,
-		provider:   provider,
+		provider:   prov,
+		buffer:     buf,
 		engine:     eng,
 		socketPath: getSocketPath(),
 		pidPath:    getPidPath(),
@@ -164,8 +171,9 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		return
 	}
 
-	// Set nvim instance for this connection
-	d.engine.SetNvim(n)
+	// Set nvim client on the buffer and register event handler
+	d.buffer.SetClient(n)
+	d.engine.RegisterEventHandler()
 
 	// Serve this connection until it closes or context is done
 	select {
