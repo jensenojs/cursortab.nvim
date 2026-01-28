@@ -24,6 +24,7 @@ type Provider struct {
 	model       string
 	temperature float64
 	maxTokens   int
+	topK        int
 }
 
 // NewProvider creates a new FIM provider instance
@@ -38,6 +39,7 @@ func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 		model:       config.ProviderModel,
 		temperature: config.ProviderTemperature,
 		maxTokens:   config.ProviderMaxTokens,
+		topK:        config.ProviderTopK,
 	}, nil
 }
 
@@ -52,6 +54,7 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 		Prompt:      prompt,
 		Temperature: p.temperature,
 		MaxTokens:   p.maxTokens,
+		TopK:        p.topK,
 		N:           1,
 		Echo:        false,
 	}

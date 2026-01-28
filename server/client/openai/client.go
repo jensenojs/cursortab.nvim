@@ -18,6 +18,7 @@ type CompletionRequest struct {
 	Prompt      string   `json:"prompt"`
 	Temperature float64  `json:"temperature"`
 	MaxTokens   int      `json:"max_tokens"`
+	TopK        int      `json:"top_k,omitempty"`
 	Stop        []string `json:"stop,omitempty"`
 	N           int      `json:"n"`
 	Echo        bool     `json:"echo"`

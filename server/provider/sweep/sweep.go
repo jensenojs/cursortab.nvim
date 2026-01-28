@@ -17,6 +17,7 @@ type Provider struct {
 	client      *openai.Client
 	model       string
 	temperature float64
+	topK        int
 }
 
 // NewProvider creates a new Sweep provider instance
@@ -30,6 +31,7 @@ func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 		client:      openai.NewClient(config.ProviderURL),
 		model:       config.ProviderModel,
 		temperature: config.ProviderTemperature,
+		topK:        config.ProviderTopK,
 	}, nil
 }
 
@@ -46,6 +48,7 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 		Prompt:      prompt,
 		Temperature: p.temperature,
 		MaxTokens:   p.config.ProviderMaxTokens,
+		TopK:        p.topK,
 		Stop:        []string{"<|file_sep|>", "</s>"},
 		N:           1,
 		Echo:        false,
