@@ -102,7 +102,7 @@ require("cursortab").setup({
   provider = {
     type = "inline",                   -- Provider: "inline", "fim", "sweep", or "zeta"
     url = "http://localhost:8000",     -- URL of the provider server
-    model = "inline",                  -- Model name
+    model = "",                        -- Model name
     temperature = 0.0,                 -- Sampling temperature
     max_tokens = 512,                  -- Max tokens to generate
     top_k = 50,                        -- Top-k sampling
