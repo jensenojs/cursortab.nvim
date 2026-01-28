@@ -107,9 +107,9 @@ type CursorRange struct {
 type ProviderType string
 
 const (
-	ProviderTypeAutoComplete ProviderType = "autocomplete"
-	ProviderTypeSweep        ProviderType = "sweep"
-	ProviderTypeZeta         ProviderType = "zeta"
+	ProviderTypeInline ProviderType = "inline"
+	ProviderTypeSweep  ProviderType = "sweep"
+	ProviderTypeZeta   ProviderType = "zeta"
 )
 
 // ProviderConfig holds configuration for providers

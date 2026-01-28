@@ -1,4 +1,4 @@
-package autocomplete
+package inline
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// Provider implements the engine.Provider interface for autocomplete
+// Provider implements the engine.Provider interface for inline completion
 type Provider struct {
 	config      *types.ProviderConfig
 	httpClient  *http.Client
@@ -55,7 +55,7 @@ type completionResponse struct {
 	} `json:"usage"`
 }
 
-// NewProvider creates a new autocomplete provider instance
+// NewProvider creates a new inline provider instance
 func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
@@ -72,14 +72,14 @@ func NewProvider(config *types.ProviderConfig) (*Provider, error) {
 	}, nil
 }
 
-// GetCompletion implements engine.Provider.GetCompletion for autocomplete
+// GetCompletion implements engine.Provider.GetCompletion for inline completion
 // This provider only does end-of-line completion without cursor predictions
 func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
 	// Skip completion if there's text after the cursor
 	if req.CursorRow >= 1 && req.CursorRow <= len(req.Lines) {
 		currentLine := req.Lines[req.CursorRow-1]
 		if req.CursorCol < len(currentLine) {
-			logger.Debug("autocomplete: skipping completion, text after cursor")
+			logger.Debug("inline: skipping completion, text after cursor")
 			return &types.CompletionResponse{
 				Completions:  []*types.Completion{},
 				CursorTarget: nil,
@@ -101,6 +101,16 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 		N:           1,
 		Echo:        false,
 	}
+
+	// Debug logging for request
+	logger.Debug("inline provider request to %s:\n  Model: %s\n  Temperature: %.2f\n  MaxTokens: %d\n  TopK: %d\n  Prompt length: %d chars\n  Prompt:\n%s",
+		p.url+"/v1/completions",
+		completionReq.Model,
+		completionReq.Temperature,
+		completionReq.MaxTokens,
+		completionReq.TopK,
+		len(prompt),
+		prompt)
 
 	// Marshal the request
 	reqBody, err := json.Marshal(completionReq)
@@ -146,6 +156,10 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 	completionText := completionResp.Choices[0].Text
 	finishReason := completionResp.Choices[0].FinishReason
 
+	// Debug logging for response
+	logger.Debug("inline provider response:\n  Text length: %d chars\n  FinishReason: %s\n  Text: %q",
+		len(completionText), finishReason, completionText)
+
 	// If the completion is empty or just whitespace, return empty response
 	if strings.TrimSpace(completionText) == "" {
 		return &types.CompletionResponse{
@@ -157,7 +171,7 @@ func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionReque
 	// For single-line completions, if we hit max_tokens (finish_reason == "length"),
 	// it means the completion was truncated - we should reject it as incomplete
 	if finishReason == "length" {
-		logger.Info("autocomplete completion truncated: rejected (finish_reason=length, output_len=%d chars)", len(completionText))
+		logger.Info("inline completion truncated: rejected (finish_reason=length, output_len=%d chars)", len(completionText))
 		return &types.CompletionResponse{
 			Completions:  []*types.Completion{},
 			CursorTarget: nil,

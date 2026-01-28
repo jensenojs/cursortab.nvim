@@ -42,7 +42,7 @@ type Buffer interface {
 }
 
 // Provider defines the interface that all AI providers must implement.
-// Implemented by autocomplete.Provider, sweep.Provider, zeta.Provider.
+// Implemented by inline.Provider, sweep.Provider, zeta.Provider.
 type Provider interface {
 	GetCompletion(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error)
 }

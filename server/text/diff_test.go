@@ -1070,7 +1070,7 @@ func TestPureAdditionsAtEndOfFile(t *testing.T) {
 // TestEmptyLineFilledWithContent verifies that filling an empty line with content
 // is categorized as append_chars (inline ghost text), not addition (virtual line).
 func TestEmptyLineFilledWithContent(t *testing.T) {
-	// Scenario: cursor is on empty line 8, autocomplete suggests "def calc_angle(x, y"
+	// Scenario: cursor is on empty line 8, inline completion suggests "def calc_angle(x, y"
 	// This should render as inline ghost text, not a new virtual line
 	text1 := JoinLines([]string{""})                      // empty line
 	text2 := JoinLines([]string{"def calc_angle(x, y"}) // filled with content

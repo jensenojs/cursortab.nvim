@@ -25,7 +25,7 @@ type BehaviorConfig struct {
 
 // ProviderConfig holds provider-specific settings
 type ProviderConfig struct {
-	Type                 string  `json:"type"` // "autocomplete", "sweep", "zeta"
+	Type                 string  `json:"type"` // "inline", "sweep", "zeta"
 	URL                  string  `json:"url"`
 	Model                string  `json:"model"`
 	Temperature          float64 `json:"temperature"`

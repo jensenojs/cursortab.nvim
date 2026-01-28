@@ -81,9 +81,9 @@ local default_config = {
 	},
 
 	provider = {
-		type = "autocomplete", -- "autocomplete", "sweep", or "zeta"
+		type = "inline", -- "inline", "sweep", or "zeta"
 		url = "http://localhost:8000", -- URL of the provider server
-		model = "autocomplete", -- Model name
+		model = "inline", -- Model name
 		temperature = 0.0, -- Sampling temperature
 		max_tokens = 512, -- Max tokens to generate
 		top_k = 50, -- Top-k sampling
@@ -141,7 +141,7 @@ local function migrate_deprecated_config(user_config)
 
 	for old_key, new_path in pairs(deprecated_mappings) do
 		if migrated[old_key] ~= nil then
-			-- Skip if key exists in new format (e.g., provider = { type = ... } is new, provider = "autocomplete" is old)
+			-- Skip if key exists in new format (e.g., provider = { type = ... } is new, provider = "inline" is old)
 			-- When new_path[1] == old_key, the new format uses a table at that key
 			if new_path and new_path[1] == old_key and type(migrated[old_key]) == "table" then
 				goto continue
@@ -197,7 +197,7 @@ local function migrate_deprecated_config(user_config)
 end
 
 -- Valid values for enum-like config options
-local valid_provider_types = { autocomplete = true, sweep = true, zeta = true }
+local valid_provider_types = { inline = true, sweep = true, zeta = true }
 local valid_log_levels = { debug = true, info = true, warn = true, error = true }
 
 -- Validate configuration values
@@ -207,7 +207,7 @@ local function validate_config(cfg)
 	if cfg.provider and cfg.provider.type then
 		if not valid_provider_types[cfg.provider.type] then
 			error(string.format(
-				"[cursortab.nvim] Invalid provider.type '%s'. Must be one of: autocomplete, sweep, zeta",
+				"[cursortab.nvim] Invalid provider.type '%s'. Must be one of: inline, sweep, zeta",
 				cfg.provider.type
 			))
 		end

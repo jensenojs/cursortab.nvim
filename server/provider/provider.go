@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"cursortab/engine"
-	"cursortab/provider/autocomplete"
+	"cursortab/provider/inline"
 	"cursortab/provider/sweep"
 	"cursortab/provider/zeta"
 	"cursortab/types"
@@ -15,8 +15,8 @@ func NewProvider(providerType types.ProviderType, config *types.ProviderConfig) 
 	switch providerType {
 	case types.ProviderTypeZeta:
 		return zeta.NewProvider(config)
-	case types.ProviderTypeAutoComplete:
-		return autocomplete.NewProvider(config)
+	case types.ProviderTypeInline:
+		return inline.NewProvider(config)
 	case types.ProviderTypeSweep:
 		return sweep.NewProvider(config)
 	default:

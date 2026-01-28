@@ -74,9 +74,9 @@ Full configuration with defaults: >lua
     },
 
     provider = {
-      type = "autocomplete",        -- "autocomplete", "sweep", "zeta"
+      type = "inline",              -- "inline", "sweep", "zeta"
       url = "http://localhost:8000",
-      model = "autocomplete",
+      model = "inline",
       temperature = 0.0,
       max_tokens = 512,
       top_k = 50,
@@ -137,7 +137,7 @@ behavior.cursor_prediction            *cursortab-config-behavior-cursor-predicti
 PROVIDER OPTIONS                                    *cursortab-config-provider*
 
   `type`
-      Provider type: "autocomplete", "sweep", or "zeta".
+      Provider type: "inline", "sweep", or "zeta".
 
   `url`
       URL of the provider server.

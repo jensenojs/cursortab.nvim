@@ -72,9 +72,9 @@ require("cursortab").setup({
   },
 
   provider = {
-    type = "autocomplete",             -- Provider: "autocomplete", "sweep", or "zeta"
+    type = "inline",                   -- Provider: "inline", "sweep", or "zeta"
     url = "http://localhost:8000",     -- URL of the provider server
-    model = "autocomplete",            -- Model name
+    model = "inline",                  -- Model name
     temperature = 0.0,                 -- Sampling temperature
     max_tokens = 512,                  -- Max tokens to generate
     top_k = 50,                        -- Top-k sampling
@@ -92,9 +92,9 @@ For detailed configuration documentation, see `:help cursortab-config`.
 
 ### Providers
 
-The plugin supports three AI provider backends: Autocomplete, Sweep, and Zeta.
+The plugin supports three AI provider backends: Inline, Sweep, and Zeta.
 
-#### Autocomplete Provider (Default)
+#### Inline Provider (Default)
 
 End-of-line completion using OpenAI-compatible API endpoints.
 
@@ -114,9 +114,9 @@ End-of-line completion using OpenAI-compatible API endpoints.
 ```lua
 require("cursortab").setup({
   provider = {
-    type = "autocomplete",
+    type = "inline",
     url = "http://localhost:8000",
-    model = "autocomplete",
+    model = "inline",
   },
 })
 ```
@@ -230,8 +230,8 @@ cd server && go test ./...
 <details>
 <summary>Which provider should I use?</summary>
 
-- **Autocomplete**: End-of-line completions only. No multi-line or cursor
-  prediction support.
+- **Inline**: End-of-line completions only. No multi-line or cursor prediction
+  support.
 - **Zeta** and **Sweep**: Both support multi-line completions and cursor
   predictions. Sweep generally produces better results.
 
