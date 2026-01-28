@@ -108,6 +108,12 @@ require("cursortab").setup({
     top_k = 50,                        -- Top-k sampling
     completion_timeout = 5000,         -- Timeout in ms for completion requests
     max_diff_history_tokens = 512,     -- Max tokens for diff history (0 = no limit)
+    completion_path = "/v1/completions", -- API endpoint path
+    fim_tokens = {                     -- FIM tokens (for FIM provider)
+      prefix = "<|fim_prefix|>",
+      suffix = "<|fim_suffix|>",
+      middle = "<|fim_middle|>",
+    },
   },
 
   debug = {

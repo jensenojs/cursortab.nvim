@@ -82,6 +82,12 @@ Full configuration with defaults: >lua
       top_k = 50,
       completion_timeout = 5000,    -- ms
       max_diff_history_tokens = 512,
+      completion_path = "/v1/completions",
+      fim_tokens = {
+        prefix = "<|fim_prefix|>",
+        suffix = "<|fim_suffix|>",
+        middle = "<|fim_middle|>",
+      },
     },
 
     debug = {
@@ -165,6 +171,20 @@ PROVIDER OPTIONS                                    *cursortab-config-provider*
   `max_diff_history_tokens`
       Maximum tokens for diff history context. Set to 0 for no limit.
 
+  `completion_path`
+      API endpoint path for completions. Default: "/v1/completions".
+      Must start with "/". Override when using non-standard API endpoints.
+
+  `fim_tokens`                                 *cursortab-config-provider-fim*
+      FIM (Fill-in-the-Middle) tokens configuration. Only used by the FIM
+      provider. When nil, uses default tokens. Example: >lua
+
+        fim_tokens = {
+          prefix = "<|fim_prefix|>",   -- Token before prefix content
+          suffix = "<|fim_suffix|>",   -- Token before suffix content
+          middle = "<|fim_middle|>",   -- Token before completion
+        }
+<
 ------------------------------------------------------------------------------
 DEBUG OPTIONS                                          *cursortab-config-debug*
 

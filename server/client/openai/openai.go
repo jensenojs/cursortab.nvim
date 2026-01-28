@@ -64,17 +64,22 @@ type StreamResult struct {
 	StoppedEarly bool
 }
 
+// DefaultCompletionPath is the default API endpoint path
+const DefaultCompletionPath = "/v1/completions"
+
 // Client is a reusable OpenAI-compatible API client
 type Client struct {
-	HTTPClient *http.Client
-	URL        string
+	HTTPClient     *http.Client
+	URL            string
+	CompletionPath string
 }
 
 // NewClient creates a new OpenAI-compatible client
-func NewClient(url string) *Client {
+func NewClient(url, completionPath string) *Client {
 	return &Client{
-		HTTPClient: &http.Client{},
-		URL:        url,
+		HTTPClient:     &http.Client{},
+		URL:            url,
+		CompletionPath: completionPath,
 	}
 }
 
@@ -109,7 +114,7 @@ func (c *Client) DoStreamingCompletion(ctx context.Context, req *CompletionReque
 	}
 
 	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.URL+"/v1/completions", &reqBodyBuf)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.URL+c.CompletionPath, &reqBodyBuf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -210,7 +215,7 @@ func (c *Client) doRequest(ctx context.Context, req *CompletionRequest) ([]byte,
 	}
 
 	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.URL+"/v1/completions", &reqBodyBuf)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.URL+c.CompletionPath, &reqBodyBuf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

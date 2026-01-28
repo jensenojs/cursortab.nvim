@@ -7,10 +7,11 @@ import (
 	"strings"
 )
 
+// Default FIM tokens (Qwen/DeepSeek-Coder style)
 const (
-	prefixToken = "<|fim_prefix|>"
-	suffixToken = "<|fim_suffix|>"
-	middleToken = "<|fim_middle|>"
+	defaultPrefixToken = "<|fim_prefix|>"
+	defaultSuffixToken = "<|fim_suffix|>"
+	defaultMiddleToken = "<|fim_middle|>"
 )
 
 // NewProvider creates a new fill-in-the-middle completion provider
@@ -18,7 +19,7 @@ func NewProvider(config *types.ProviderConfig) *provider.Provider {
 	return &provider.Provider{
 		Name:      "fim",
 		Config:    config,
-		Client:    openai.NewClient(config.ProviderURL),
+		Client:    openai.NewClient(config.ProviderURL, config.CompletionPath),
 		Streaming: false,
 		Preprocessors: []provider.Preprocessor{
 			provider.TrimContent(),
@@ -32,7 +33,27 @@ func NewProvider(config *types.ProviderConfig) *provider.Provider {
 	}
 }
 
+// getFIMTokens returns the FIM tokens from config or defaults
+func getFIMTokens(config *types.ProviderConfig) (prefix, suffix, middle string) {
+	if config.FIMTokens != nil {
+		prefix = config.FIMTokens.Prefix
+		suffix = config.FIMTokens.Suffix
+		middle = config.FIMTokens.Middle
+	}
+	if prefix == "" {
+		prefix = defaultPrefixToken
+	}
+	if suffix == "" {
+		suffix = defaultSuffixToken
+	}
+	if middle == "" {
+		middle = defaultMiddleToken
+	}
+	return
+}
+
 func buildPrompt(p *provider.Provider, ctx *provider.Context) *openai.CompletionRequest {
+	prefixToken, suffixToken, middleToken := getFIMTokens(p.Config)
 	var prompt string
 
 	if len(ctx.TrimmedLines) == 0 {

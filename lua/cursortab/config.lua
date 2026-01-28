@@ -27,6 +27,11 @@
 ---@field text_change_debounce integer
 ---@field cursor_prediction CursortabCursorPredictionConfig
 
+---@class CursortabFIMTokensConfig
+---@field prefix string FIM prefix token (e.g., "<|fim_prefix|>")
+---@field suffix string FIM suffix token (e.g., "<|fim_suffix|>")
+---@field middle string FIM middle token (e.g., "<|fim_middle|>")
+
 ---@class CursortabProviderConfig
 ---@field type string
 ---@field url string
@@ -36,6 +41,8 @@
 ---@field top_k integer
 ---@field completion_timeout integer
 ---@field max_diff_history_tokens integer
+---@field completion_path string API endpoint path (e.g., "/v1/completions")
+---@field fim_tokens CursortabFIMTokensConfig|nil FIM tokens configuration (optional)
 
 ---@class CursortabDebugConfig
 ---@field immediate_shutdown boolean
@@ -81,7 +88,7 @@ local default_config = {
 	},
 
 	provider = {
-		type = "inline", -- "inline", "sweep", or "zeta"
+		type = "inline", -- "inline", "fim", "sweep", or "zeta"
 		url = "http://localhost:8000", -- URL of the provider server
 		model = "", -- Model name
 		temperature = 0.0, -- Sampling temperature
@@ -89,6 +96,12 @@ local default_config = {
 		top_k = 50, -- Top-k sampling
 		completion_timeout = 5000, -- Timeout in ms for completion requests
 		max_diff_history_tokens = 512, -- Max tokens for diff history (0 = no limit)
+		completion_path = "/v1/completions", -- API endpoint path
+		fim_tokens = { -- FIM tokens (for FIM provider)
+			prefix = "<|fim_prefix|>",
+			suffix = "<|fim_suffix|>",
+			middle = "<|fim_middle|>",
+		},
 	},
 
 	debug = {
@@ -249,6 +262,24 @@ local function validate_config(cfg)
 					vim.log.levels.WARN
 				)
 			end)
+		end
+		if cfg.provider.completion_path and not cfg.provider.completion_path:match("^/") then
+			error("[cursortab.nvim] provider.completion_path must start with '/'")
+		end
+		if cfg.provider.fim_tokens ~= nil then
+			if type(cfg.provider.fim_tokens) ~= "table" then
+				error("[cursortab.nvim] provider.fim_tokens must be a table with prefix, suffix, and middle fields")
+			end
+			local required_fields = { "prefix", "suffix", "middle" }
+			for _, field in ipairs(required_fields) do
+				local value = cfg.provider.fim_tokens[field]
+				if value == nil or type(value) ~= "string" or value == "" then
+					error(string.format(
+						"[cursortab.nvim] provider.fim_tokens.%s is required and must be a non-empty string",
+						field
+					))
+				end
+			end
 		end
 	end
 end

@@ -45,6 +45,15 @@ func NewDaemon(config Config) (*Daemon, error) {
 		ProviderTemperature: config.Provider.Temperature,
 		ProviderMaxTokens:   config.Provider.MaxTokens,
 		ProviderTopK:        config.Provider.TopK,
+		CompletionPath:      config.Provider.CompletionPath,
+	}
+
+	if config.Provider.FIMTokens != nil {
+		providerConfig.FIMTokens = &types.FIMTokenConfig{
+			Prefix: config.Provider.FIMTokens.Prefix,
+			Suffix: config.Provider.FIMTokens.Suffix,
+			Middle: config.Provider.FIMTokens.Middle,
+		}
 	}
 
 	var prov engine.Provider

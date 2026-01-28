@@ -23,16 +23,25 @@ type BehaviorConfig struct {
 	CursorPrediction    CursorPredictionConfig `json:"cursor_prediction"`
 }
 
+// FIMTokensConfig holds FIM token settings
+type FIMTokensConfig struct {
+	Prefix string `json:"prefix"`
+	Suffix string `json:"suffix"`
+	Middle string `json:"middle"`
+}
+
 // ProviderConfig holds provider-specific settings
 type ProviderConfig struct {
-	Type                 string  `json:"type"` // "inline", "sweep", "zeta"
-	URL                  string  `json:"url"`
-	Model                string  `json:"model"`
-	Temperature          float64 `json:"temperature"`
-	MaxTokens            int     `json:"max_tokens"` // Max tokens to generate (also drives input trimming)
-	TopK                 int     `json:"top_k"`
-	CompletionTimeout    int     `json:"completion_timeout"` // in milliseconds
-	MaxDiffHistoryTokens int     `json:"max_diff_history_tokens"`
+	Type                 string           `json:"type"` // "inline", "sweep", "zeta"
+	URL                  string           `json:"url"`
+	Model                string           `json:"model"`
+	Temperature          float64          `json:"temperature"`
+	MaxTokens            int              `json:"max_tokens"` // Max tokens to generate (also drives input trimming)
+	TopK                 int              `json:"top_k"`
+	CompletionTimeout    int              `json:"completion_timeout"` // in milliseconds
+	MaxDiffHistoryTokens int              `json:"max_diff_history_tokens"`
+	CompletionPath       string           `json:"completion_path"`
+	FIMTokens            *FIMTokensConfig `json:"fim_tokens"`
 }
 
 // DebugConfig holds debug settings

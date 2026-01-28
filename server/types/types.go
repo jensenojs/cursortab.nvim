@@ -113,11 +113,20 @@ const (
 	ProviderTypeZeta   ProviderType = "zeta"
 )
 
+// FIMTokenConfig holds FIM (Fill-in-the-Middle) token configuration
+type FIMTokenConfig struct {
+	Prefix string // Token before the prefix content (e.g., "<|fim_prefix|>")
+	Suffix string // Token before the suffix content (e.g., "<|fim_suffix|>")
+	Middle string // Token before the middle/completion (e.g., "<|fim_middle|>")
+}
+
 // ProviderConfig holds configuration for providers
 type ProviderConfig struct {
-	ProviderURL         string  // URL of the provider server (e.g., "http://localhost:8000")
-	ProviderModel       string  // Model name
-	ProviderTemperature float64 // Sampling temperature
-	ProviderMaxTokens   int     // Max tokens to generate (also drives input trimming)
-	ProviderTopK        int     // Top-k sampling (used by some providers)
+	ProviderURL         string          // URL of the provider server (e.g., "http://localhost:8000")
+	ProviderModel       string          // Model name
+	ProviderTemperature float64         // Sampling temperature
+	ProviderMaxTokens   int             // Max tokens to generate (also drives input trimming)
+	ProviderTopK        int             // Top-k sampling (used by some providers)
+	CompletionPath      string          // API endpoint path (e.g., "/v1/completions")
+	FIMTokens           *FIMTokenConfig // FIM tokens configuration (optional)
 }

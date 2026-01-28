@@ -13,7 +13,7 @@ func NewProvider(config *types.ProviderConfig) *provider.Provider {
 	return &provider.Provider{
 		Name:      "zeta",
 		Config:    config,
-		Client:    openai.NewClient(config.ProviderURL),
+		Client:    openai.NewClient(config.ProviderURL, config.CompletionPath),
 		Streaming: true,
 		Preprocessors: []provider.Preprocessor{
 			provider.TrimContent(),
