@@ -306,12 +306,12 @@ func (p *Provider) parseCompletion(req *types.CompletionRequest, completionText 
 		}
 	}
 
-	// Validation 2: Line removal check - reject if removing more than 10% of lines
+	// Validation 2: Line removal check - reject if removing more than 25% of lines
 	// This catches cases where model outputs dramatically fewer lines than expected
 	if len(oldLines) > 10 {
-		minAllowedLines := len(oldLines) * 9 / 10 // 90% of original
+		minAllowedLines := len(oldLines) * 3 / 4 // 75% of original
 		if len(newLines) < minAllowedLines {
-			logger.Debug("sweep completion rejected: output has %d lines, minimum allowed %d (90%% of %d)",
+			logger.Debug("sweep completion rejected: output has %d lines, minimum allowed %d (75%% of %d)",
 				len(newLines), minAllowedLines, len(oldLines))
 			return nil
 		}
