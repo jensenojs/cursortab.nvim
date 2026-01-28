@@ -126,6 +126,7 @@ func (b *NvimBuffer) SetFileContext(previousLines, originalLines []string, diffH
 
 // Sync reads current state from the editor
 func (b *NvimBuffer) Sync(workspacePath string) (*SyncResult, error) {
+	defer logger.Trace("buffer.Sync")()
 	if b.client == nil {
 		return nil, fmt.Errorf("nvim client not set")
 	}

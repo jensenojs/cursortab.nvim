@@ -9,6 +9,22 @@ import (
 	"time"
 )
 
+// noopFunc is a reusable no-op function to avoid allocations
+var noopFunc = func() {}
+
+// Trace returns a function that logs operation duration when called.
+// Returns a no-op function when TRACE level is disabled to avoid overhead.
+// Usage: defer logger.Trace("operation")()
+func Trace(name string) func() {
+	if globalLogger == nil || !globalLogger.shouldLog(LogLevelTrace) {
+		return noopFunc
+	}
+	start := time.Now()
+	return func() {
+		globalLogger.logWithLevel(LogLevelTrace, "%s: %v", name, time.Since(start))
+	}
+}
+
 // defaultLogger is used before the global logger is initialized
 var defaultLogger = &LimitedLogger{
 	file:      os.Stderr,
@@ -23,7 +39,8 @@ const MaxLogLines = 50000
 type LogLevel int
 
 const (
-	LogLevelDebug LogLevel = iota
+	LogLevelTrace LogLevel = iota
+	LogLevelDebug
 	LogLevelInfo
 	LogLevelWarn
 	LogLevelError
@@ -32,6 +49,8 @@ const (
 // String returns the string representation of a log level
 func (l LogLevel) String() string {
 	switch l {
+	case LogLevelTrace:
+		return "TRACE"
 	case LogLevelDebug:
 		return "DEBUG"
 	case LogLevelInfo:
@@ -48,6 +67,8 @@ func (l LogLevel) String() string {
 // ParseLogLevel parses a string into a LogLevel
 func ParseLogLevel(s string) LogLevel {
 	switch strings.ToUpper(s) {
+	case "TRACE":
+		return LogLevelTrace
 	case "DEBUG":
 		return LogLevelDebug
 	case "INFO":

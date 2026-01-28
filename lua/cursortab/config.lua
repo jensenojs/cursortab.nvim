@@ -211,7 +211,7 @@ end
 
 -- Valid values for enum-like config options
 local valid_provider_types = { inline = true, fim = true, sweep = true, zeta = true }
-local valid_log_levels = { debug = true, info = true, warn = true, error = true }
+local valid_log_levels = { trace = true, debug = true, info = true, warn = true, error = true }
 
 -- Validate configuration values
 ---@param cfg table
@@ -229,7 +229,7 @@ local function validate_config(cfg)
 	-- Validate log level
 	if cfg.log_level and not valid_log_levels[cfg.log_level] then
 		error(string.format(
-			"[cursortab.nvim] Invalid log_level '%s'. Must be one of: debug, info, warn, error",
+			"[cursortab.nvim] Invalid log_level '%s'. Must be one of: trace, debug, info, warn, error",
 			cfg.log_level
 		))
 	end

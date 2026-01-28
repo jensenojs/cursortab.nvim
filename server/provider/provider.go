@@ -44,6 +44,7 @@ type Provider struct {
 
 // GetCompletion implements engine.Provider
 func (p *Provider) GetCompletion(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
+	defer logger.Trace("Provider.GetCompletion")()
 	pctx := &Context{Request: req}
 
 	for _, pre := range p.Preprocessors {

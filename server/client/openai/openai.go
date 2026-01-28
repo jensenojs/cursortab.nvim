@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"cursortab/logger"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+
+	"cursortab/logger"
 )
 
 // CompletionRequest matches the OpenAI Completion API format
@@ -85,6 +86,7 @@ func NewClient(url, completionPath string) *Client {
 
 // DoCompletion sends a non-streaming completion request
 func (c *Client) DoCompletion(ctx context.Context, req *CompletionRequest) (*CompletionResponse, error) {
+	defer logger.Trace("openai.DoCompletion")()
 	req.Stream = false
 
 	body, err := c.doRequest(ctx, req)
@@ -103,6 +105,7 @@ func (c *Client) DoCompletion(ctx context.Context, req *CompletionRequest) (*Com
 // DoStreamingCompletion sends a streaming completion request with line-count early cancellation
 // maxLines: stop after receiving this many newlines (0 = no limit)
 func (c *Client) DoStreamingCompletion(ctx context.Context, req *CompletionRequest, maxLines int) (*StreamResult, error) {
+	defer logger.Trace("openai.DoStreamingCompletion")()
 	req.Stream = true
 
 	// Marshal the request without HTML escaping

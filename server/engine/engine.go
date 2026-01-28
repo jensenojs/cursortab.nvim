@@ -894,6 +894,7 @@ func (e *Engine) getStage(idx int) *text.Stage {
 // Called from both fresh completion responses and prefetch paths.
 // Returns true if completion was processed successfully, false if no changes.
 func (e *Engine) processCompletion(completion *types.Completion) bool {
+	defer logger.Trace("engine.processCompletion")()
 	if completion == nil {
 		return false
 	}

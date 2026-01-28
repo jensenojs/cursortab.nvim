@@ -1,6 +1,7 @@
 package text
 
 import (
+	"cursortab/logger"
 	"strings"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -194,6 +195,7 @@ func (r *DiffResult) addModification(oldLineNum, newLineNum int, oldContent, new
 
 // ComputeDiff computes and categorizes line-level changes between two texts
 func ComputeDiff(text1, text2 string) *DiffResult {
+	defer logger.Trace("text.ComputeDiff")()
 	// Count lines in both texts
 	oldLines := splitLines(text1)
 	newLines := splitLines(text2)

@@ -70,9 +70,9 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate log level
-	validLogLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
+	validLogLevels := map[string]bool{"trace": true, "debug": true, "info": true, "warn": true, "error": true}
 	if !validLogLevels[c.LogLevel] {
-		return fmt.Errorf("invalid log_level %q: must be one of debug, info, warn, error", c.LogLevel)
+		return fmt.Errorf("invalid log_level %q: must be one of trace, debug, info, warn, error", c.LogLevel)
 	}
 
 	// Validate numeric ranges
