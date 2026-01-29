@@ -69,7 +69,7 @@ Full configuration with defaults: >lua
       cursor_prediction = {
         enabled = true,
         auto_advance = true,
-        dist_threshold = 2,
+        proximity_threshold = 2,
       },
     },
 
@@ -133,7 +133,7 @@ behavior.cursor_prediction            *cursortab-config-behavior-cursor-predicti
       When a completion results in no code changes, show a cursor jump to the
       last line of the completion (default: true).
 
-  `dist_threshold`
+  `proximity_threshold`
       Minimum lines apart to show a cursor jump between completions. When
       completions span multiple distant locations, this controls when to show
       a jump indicator instead of applying changes directly. Set to 0 to
@@ -221,6 +221,11 @@ They will be automatically migrated to the new nested structure:
   `max_context_tokens`         provider.max_context_tokens
   `max_diff_history_tokens`    provider.max_diff_history_tokens
   `debug_immediate_shutdown`   debug.immediate_shutdown
+
+The following nested fields have been renamed:
+
+  Old Field                                    New Field ~
+  `behavior.cursor_prediction.dist_threshold`    behavior.cursor_prediction.proximity_threshold
 
 The following options have been removed and no longer have any effect:
 

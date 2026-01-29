@@ -80,7 +80,7 @@ func NewDaemon(config Config) (*Daemon, error) {
 		CursorPrediction: engine.CursorPredictionConfig{
 			Enabled:       config.Behavior.CursorPrediction.Enabled,
 			AutoAdvance:   config.Behavior.CursorPrediction.AutoAdvance,
-			DistThreshold: config.Behavior.CursorPrediction.DistThreshold,
+			ProximityThreshold: config.Behavior.CursorPrediction.ProximityThreshold,
 		},
 		MaxDiffTokens: config.Provider.MaxDiffHistoryTokens,
 	}, engine.SystemClock)

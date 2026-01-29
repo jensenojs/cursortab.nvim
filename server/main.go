@@ -13,9 +13,9 @@ import (
 
 // CursorPredictionConfig holds cursor prediction settings
 type CursorPredictionConfig struct {
-	Enabled       bool `json:"enabled"`
-	AutoAdvance   bool `json:"auto_advance"`
-	DistThreshold int  `json:"dist_threshold"`
+	Enabled              bool `json:"enabled"`
+	AutoAdvance          bool `json:"auto_advance"`
+	ProximityThreshold   int  `json:"proximity_threshold"`
 }
 
 // BehaviorConfig holds timing and behavior settings

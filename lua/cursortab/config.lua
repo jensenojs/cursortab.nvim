@@ -20,7 +20,7 @@
 ---@class CursortabCursorPredictionConfig
 ---@field enabled boolean
 ---@field auto_advance boolean
----@field dist_threshold integer
+---@field proximity_threshold integer
 
 ---@class CursortabBehaviorConfig
 ---@field idle_completion_delay integer
@@ -83,7 +83,7 @@ local default_config = {
 		cursor_prediction = {
 			enabled = true, -- Show jump indicators after completions
 			auto_advance = true, -- When completion has no changes, show cursor jump to last line
-			dist_threshold = 2, -- Min lines apart to show cursor jump between completions (0 to disable)
+			proximity_threshold = 2, -- Min lines apart to show cursor jump between completions (0 to disable)
 		},
 	},
 
@@ -144,6 +144,12 @@ local deprecated_mappings = {
 	debug_color = nil,
 }
 
+-- Nested field renames (old nested field -> new field name within same parent)
+-- Format: { path = { "path", "to", "parent" }, old = "old_field", new = "new_field" }
+local nested_field_renames = {
+	{ path = { "behavior", "cursor_prediction" }, old = "dist_threshold", new = "proximity_threshold" },
+}
+
 -- Migrate deprecated flat config to new nested structure
 ---@param user_config table
 ---@return table
@@ -201,6 +207,39 @@ local function migrate_deprecated_config(user_config)
 				"[cursortab.nvim] Removed config keys detected: "
 					.. table.concat(removed_keys, ", ")
 					.. "\nThese options no longer have any effect.",
+				vim.log.levels.WARN
+			)
+		end)
+	end
+
+	-- Handle nested field renames
+	local renamed_fields = {}
+	for _, rename in ipairs(nested_field_renames) do
+		-- Navigate to the parent table
+		local parent = migrated
+		local found = true
+		for _, key in ipairs(rename.path) do
+			if parent[key] == nil or type(parent[key]) ~= "table" then
+				found = false
+				break
+			end
+			parent = parent[key]
+		end
+
+		-- If parent exists and has the old field, rename it
+		if found and parent[rename.old] ~= nil then
+			parent[rename.new] = parent[rename.old]
+			parent[rename.old] = nil
+			table.insert(renamed_fields, rename.old .. " -> " .. rename.new)
+		end
+	end
+
+	if #renamed_fields > 0 then
+		vim.schedule(function()
+			vim.notify(
+				"[cursortab.nvim] Renamed config fields detected: "
+					.. table.concat(renamed_fields, ", ")
+					.. "\nPlease update your config. See :help cursortab-config",
 				vim.log.levels.WARN
 			)
 		end)

@@ -97,7 +97,7 @@ require("cursortab").setup({
     cursor_prediction = {
       enabled = true,            -- Show jump indicators after completions
       auto_advance = true,       -- When no changes, show cursor jump to last line
-      dist_threshold = 2,        -- Min lines apart to show cursor jump (0 to disable)
+      proximity_threshold = 2,   -- Min lines apart to show cursor jump (0 to disable)
     },
   },
 

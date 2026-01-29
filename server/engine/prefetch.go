@@ -127,7 +127,7 @@ func (e *Engine) handlePrefetchReady(resp *types.CompletionResponse) {
 
 			if targetLine > 0 {
 				distance := abs(targetLine - e.buffer.Row())
-				if distance <= e.config.CursorPrediction.DistThreshold {
+				if distance <= e.config.CursorPrediction.ProximityThreshold {
 					// Close enough - show completion immediately
 					e.tryShowPrefetchedCompletion()
 				} else {

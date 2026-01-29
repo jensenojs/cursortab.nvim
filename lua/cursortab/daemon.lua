@@ -55,7 +55,7 @@ local function start_daemon()
 			cursor_prediction = {
 				enabled = cfg.behavior.cursor_prediction.enabled,
 				auto_advance = cfg.behavior.cursor_prediction.auto_advance,
-				dist_threshold = cfg.behavior.cursor_prediction.dist_threshold,
+				proximity_threshold = cfg.behavior.cursor_prediction.proximity_threshold,
 			},
 		},
 		provider = {

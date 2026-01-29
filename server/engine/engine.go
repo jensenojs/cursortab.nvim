@@ -151,7 +151,7 @@ const (
 type CursorPredictionConfig struct {
 	Enabled       bool // Show jump indicators (default: true)
 	AutoAdvance   bool // On no-op, jump to last line + retrigger (default: true)
-	DistThreshold int  // Lines apart to trigger staging (default: 3)
+	ProximityThreshold int // Lines apart to trigger staging (default: 3)
 }
 
 // FileState holds per-file context that persists across file switches
@@ -677,7 +677,7 @@ func (e *Engine) requestStreamingCompletion(provider LineStreamProvider, req *ty
 		StageBuilder: text.NewIncrementalStageBuilder(
 			oldLines,
 			windowStart+1, // baseLineOffset (1-indexed)
-			e.config.CursorPrediction.DistThreshold,
+			e.config.CursorPrediction.ProximityThreshold,
 			viewportTop,
 			viewportBottom,
 			e.buffer.Row(),
@@ -745,7 +745,7 @@ func (e *Engine) handleCursorTarget() {
 	}
 
 	distance := abs(int(e.cursorTarget.LineNumber) - e.buffer.Row())
-	if distance <= e.config.CursorPrediction.DistThreshold {
+	if distance <= e.config.CursorPrediction.ProximityThreshold {
 		// Close enough - don't show cursor prediction
 
 		// If we have remaining staged completions, check if next stage is still close
@@ -767,7 +767,7 @@ func (e *Engine) handleCursorTarget() {
 				stageDistance = 0 // Cursor is within the stage range
 			}
 
-			if stageDistance <= e.config.CursorPrediction.DistThreshold {
+			if stageDistance <= e.config.CursorPrediction.ProximityThreshold {
 				// Stage is close enough - show it directly
 				e.showCurrentStage()
 				return
@@ -1203,7 +1203,7 @@ func (e *Engine) processCompletion(completion *types.Completion) bool {
 		e.buffer.Row(),
 		viewportTop, viewportBottom,
 		completion.StartLine,
-		e.config.CursorPrediction.DistThreshold,
+		e.config.CursorPrediction.ProximityThreshold,
 		e.buffer.Path(),
 		completion.Lines,
 		originalLines, // oldLines parameter
@@ -1369,7 +1369,7 @@ func (e *Engine) handleStreamLine(line string) {
 				finalized,
 				e.buffer.Row(),
 				viewportTop, viewportBottom,
-				e.config.CursorPrediction.DistThreshold,
+				e.config.CursorPrediction.ProximityThreshold,
 			)
 			if !needsNav {
 				// Stage is close to cursor - render it immediately
