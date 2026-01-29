@@ -25,6 +25,11 @@ jobs:
       - name: Run tests
         run: cd server && go test ./...
 
+      - name: Check for dead code
+        run: |
+          go install golang.org/x/tools/cmd/deadcode@latest
+          cd server && deadcode .
+
   release:
     name: Create Release
     needs: test
