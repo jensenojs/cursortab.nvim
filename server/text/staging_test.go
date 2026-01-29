@@ -7,70 +7,50 @@ import (
 	"testing"
 )
 
-func TestClusterDistanceFromCursor(t *testing.T) {
-	// Cluster with relative coordinates 1-6, baseLineOffset=10 means buffer lines 10-15
-	cluster := &ChangeCluster{
-		StartLine: 1,
-		EndLine:   6,
-		Changes: map[int]LineChange{
-			1: {Type: ChangeModification, OldLineNum: 1, NewLineNum: 1},
-			6: {Type: ChangeModification, OldLineNum: 6, NewLineNum: 6},
-		},
-	}
-	baseLineOffset := 10
-	diff := &DiffResult{
-		Changes:      cluster.Changes,
-		OldLineCount: 6,
-		NewLineCount: 6,
+func TestStageDistanceFromCursor(t *testing.T) {
+	// Stage with buffer range 10-15
+	stage := &Stage{
+		BufferStart: 10,
+		BufferEnd:   15,
 	}
 
 	tests := []struct {
 		cursorRow int // buffer coordinates
 		expected  int
 	}{
-		{5, 5},  // cursor before cluster (buffer line 5, cluster starts at buffer 10)
+		{5, 5},  // cursor before stage (buffer line 5, stage starts at buffer 10)
 		{10, 0}, // cursor at start (buffer line 10)
 		{12, 0}, // cursor inside (buffer line 12)
 		{15, 0}, // cursor at end (buffer line 15)
-		{20, 5}, // cursor after cluster (buffer line 20, cluster ends at buffer 15)
+		{20, 5}, // cursor after stage (buffer line 20, stage ends at buffer 15)
 	}
 
 	for _, tt := range tests {
-		result := clusterDistanceFromCursor(cluster, tt.cursorRow, baseLineOffset, diff)
+		result := stageDistanceFromCursor(stage, tt.cursorRow)
 		assert.Equal(t, tt.expected, result, fmt.Sprintf("distance for cursor at %d", tt.cursorRow))
 	}
 }
 
-func TestClusterDistanceFromCursor_NoOffset(t *testing.T) {
-	// When baseLineOffset=1, cluster coordinates match buffer coordinates
-	cluster := &ChangeCluster{
-		StartLine: 10,
-		EndLine:   15,
-		Changes: map[int]LineChange{
-			10: {Type: ChangeModification, OldLineNum: 10, NewLineNum: 10},
-			15: {Type: ChangeModification, OldLineNum: 15, NewLineNum: 15},
-		},
-	}
-	baseLineOffset := 1
-	diff := &DiffResult{
-		Changes:      cluster.Changes,
-		OldLineCount: 15,
-		NewLineCount: 15,
+func TestStageDistanceFromCursor_NoOffset(t *testing.T) {
+	// Stage with buffer range matching coordinates
+	stage := &Stage{
+		BufferStart: 10,
+		BufferEnd:   15,
 	}
 
 	tests := []struct {
 		cursorRow int
 		expected  int
 	}{
-		{5, 5},  // cursor before cluster
+		{5, 5},  // cursor before stage
 		{10, 0}, // cursor at start
 		{12, 0}, // cursor inside
 		{15, 0}, // cursor at end
-		{20, 5}, // cursor after cluster
+		{20, 5}, // cursor after stage
 	}
 
 	for _, tt := range tests {
-		result := clusterDistanceFromCursor(cluster, tt.cursorRow, baseLineOffset, diff)
+		result := stageDistanceFromCursor(stage, tt.cursorRow)
 		assert.Equal(t, tt.expected, result, fmt.Sprintf("distance for cursor at %d", tt.cursorRow))
 	}
 }
@@ -449,7 +429,7 @@ func TestCreateStages_GroupsComputed(t *testing.T) {
 	assert.NotNil(t, result.Stages[0].Groups, "first stage groups")
 }
 
-func TestGroupChangesByProximity(t *testing.T) {
+func TestGroupChangesIntoStages(t *testing.T) {
 	diff := &DiffResult{
 		Changes: map[int]LineChange{
 			5:  {Type: ChangeModification, OldLineNum: 5, NewLineNum: 5},
@@ -461,25 +441,25 @@ func TestGroupChangesByProximity(t *testing.T) {
 	}
 
 	lineNumbers := []int{5, 6, 7, 20, 21}
-	clusters := groupChangesByProximity(diff, lineNumbers, 3)
+	stages := groupChangesIntoStages(diff, lineNumbers, 3, 1)
 
-	assert.Len(t, 2, clusters, "clusters")
+	assert.Len(t, 2, stages, "stages")
 
-	// First cluster: 5-7
-	assert.Equal(t, 5, clusters[0].StartLine, "first cluster start line")
-	assert.Equal(t, 7, clusters[0].EndLine, "first cluster end line")
-	assert.Equal(t, 3, len(clusters[0].Changes), "first cluster change count")
+	// First stage: 5-7
+	assert.Equal(t, 5, stages[0].startLine, "first stage start line")
+	assert.Equal(t, 7, stages[0].endLine, "first stage end line")
+	assert.Equal(t, 3, len(stages[0].rawChanges), "first stage change count")
 
-	// Second cluster: 20-21
-	assert.Equal(t, 20, clusters[1].StartLine, "second cluster start line")
-	assert.Equal(t, 21, clusters[1].EndLine, "second cluster end line")
+	// Second stage: 20-21
+	assert.Equal(t, 20, stages[1].startLine, "second stage start line")
+	assert.Equal(t, 21, stages[1].endLine, "second stage end line")
 }
 
-func TestGroupChangesByProximity_EmptyInput(t *testing.T) {
+func TestGroupChangesIntoStages_EmptyInput(t *testing.T) {
 	diff := &DiffResult{Changes: map[int]LineChange{}}
-	clusters := groupChangesByProximity(diff, []int{}, 3)
+	stages := groupChangesIntoStages(diff, []int{}, 3, 1)
 
-	assert.Nil(t, clusters, "clusters for empty input")
+	assert.Nil(t, stages, "stages for empty input")
 }
 
 // =============================================================================
@@ -622,8 +602,8 @@ func TestGetBufferLineForChange_Modification(t *testing.T) {
 	assert.Equal(t, 11, bufferLine, "buffer line for modification")
 }
 
-func TestGetClusterBufferRange_WithInsertions(t *testing.T) {
-	// Cluster containing insertions should still compute valid buffer range
+func TestGetStageBufferRange_WithInsertions(t *testing.T) {
+	// Stage containing insertions should still compute valid buffer range
 	diff := &DiffResult{
 		Changes: map[int]LineChange{
 			2: {Type: ChangeAddition, NewLineNum: 2, OldLineNum: -1},
@@ -635,13 +615,13 @@ func TestGetClusterBufferRange_WithInsertions(t *testing.T) {
 		},
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 2,
-		EndLine:   3,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  2,
+		endLine:    3,
+		rawChanges: diff.Changes,
 	}
 
-	start, end := getClusterBufferRange(cluster, 1, diff, nil)
+	start, end := getStageBufferRange(stage, 1, diff, nil)
 
 	// Both insertions anchor to line 1, so range should be 1-1
 	assert.True(t, start <= end, fmt.Sprintf("invalid range: start=%d > end=%d", start, end))
@@ -766,8 +746,8 @@ func TestCreateStages_AllDeletions(t *testing.T) {
 	assert.Len(t, 1, result.Stages, "single cluster of deletions")
 }
 
-func TestGetClusterBufferRange_AllInsertions(t *testing.T) {
-	// Cluster containing only insertions (all OldLineNum = -1 but have mapping)
+func TestGetStageBufferRange_AllInsertions(t *testing.T) {
+	// Stage containing only insertions (all OldLineNum = -1 but have mapping)
 	diff := &DiffResult{
 		Changes: map[int]LineChange{
 			2: {Type: ChangeAddition, NewLineNum: 2, OldLineNum: -1},
@@ -780,13 +760,13 @@ func TestGetClusterBufferRange_AllInsertions(t *testing.T) {
 		},
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 2,
-		EndLine:   4,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  2,
+		endLine:    4,
+		rawChanges: diff.Changes,
 	}
 
-	start, end := getClusterBufferRange(cluster, 1, diff, nil)
+	start, end := getStageBufferRange(stage, 1, diff, nil)
 
 	// Pure additions with valid anchors (from mapping) use insertion point (anchor + 1).
 	// The mapping shows these insertions are anchored to old line 1, so insertion point is 2.
@@ -866,8 +846,8 @@ func TestStageGroups_ShouldNotExceedStageContent(t *testing.T) {
 // Tests for additions at end of file: buffer range should extend to end of original
 // =============================================================================
 
-func TestGetClusterBufferRange_AdditionsAtEndOfFile(t *testing.T) {
-	// When a cluster contains additions that extend beyond the original buffer,
+func TestGetStageBufferRange_AdditionsAtEndOfFile(t *testing.T) {
+	// When a stage contains additions that extend beyond the original buffer,
 	// the buffer range should extend to the end of the original buffer.
 
 	// Scenario: 10-line file, modification at line 8, additions at lines 9-12
@@ -883,19 +863,19 @@ func TestGetClusterBufferRange_AdditionsAtEndOfFile(t *testing.T) {
 		NewLineCount: 14,
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 8,
-		EndLine:   12,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  8,
+		endLine:    12,
+		rawChanges: diff.Changes,
 	}
 
-	startLine, endLine := getClusterBufferRange(cluster, 1, diff, nil)
+	startLine, endLine := getStageBufferRange(stage, 1, diff, nil)
 
 	assert.Equal(t, 8, startLine, "buffer start line")
 	assert.Equal(t, 10, endLine, "buffer end line should extend to end of original buffer")
 }
 
-func TestGetClusterBufferRange_AdditionsWithinBuffer(t *testing.T) {
+func TestGetStageBufferRange_AdditionsWithinBuffer(t *testing.T) {
 	// When additions don't extend beyond the original buffer,
 	// the buffer range should not be artificially extended.
 
@@ -914,13 +894,13 @@ func TestGetClusterBufferRange_AdditionsWithinBuffer(t *testing.T) {
 		},
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 5,
-		EndLine:   7,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  5,
+		endLine:    7,
+		rawChanges: diff.Changes,
 	}
 
-	startLine, endLine := getClusterBufferRange(cluster, 1, diff, nil)
+	startLine, endLine := getStageBufferRange(stage, 1, diff, nil)
 
 	// Pure additions with anchor at line 4: insertion point is anchor + 1 = 5
 	assert.Equal(t, 5, startLine, "buffer start line is insertion point (anchor + 1)")
@@ -980,7 +960,7 @@ func TestCreateStages_AdditionsAtEndOfFile(t *testing.T) {
 	}
 }
 
-func TestGetClusterBufferRange_AdditionsAnchoredBeforeModifications(t *testing.T) {
+func TestGetStageBufferRange_AdditionsAnchoredBeforeModifications(t *testing.T) {
 	// When modifications exist at line N and additions are anchored to line N-1,
 	// the buffer range should start at the first modification, not the anchor.
 
@@ -1001,13 +981,13 @@ func TestGetClusterBufferRange_AdditionsAnchoredBeforeModifications(t *testing.T
 		NewLineCount: 50,
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 43,
-		EndLine:   50,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  43,
+		endLine:    50,
+		rawChanges: diff.Changes,
 	}
 
-	startLine, endLine := getClusterBufferRange(cluster, 1, diff, nil)
+	startLine, endLine := getStageBufferRange(stage, 1, diff, nil)
 
 	// StartLine should be 43 (first modification), NOT 42 (anchor of additions)
 	assert.Equal(t, 43, startLine,
@@ -1017,8 +997,8 @@ func TestGetClusterBufferRange_AdditionsAnchoredBeforeModifications(t *testing.T
 	assert.Equal(t, 44, endLine, "buffer end should be 44")
 }
 
-func TestGetClusterBufferRange_OnlyAdditionsWithAnchor(t *testing.T) {
-	// When a cluster has ONLY additions (no modifications), the insertion point
+func TestGetStageBufferRange_OnlyAdditionsWithAnchor(t *testing.T) {
+	// When a stage has ONLY additions (no modifications), the insertion point
 	// (anchor + 1) determines the buffer range.
 
 	diff := &DiffResult{
@@ -1032,20 +1012,20 @@ func TestGetClusterBufferRange_OnlyAdditionsWithAnchor(t *testing.T) {
 		NewLineCount: 18,
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 11,
-		EndLine:   13,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  11,
+		endLine:    13,
+		rawChanges: diff.Changes,
 	}
 
-	startLine, endLine := getClusterBufferRange(cluster, 1, diff, nil)
+	startLine, endLine := getStageBufferRange(stage, 1, diff, nil)
 
 	// Pure additions with anchor at line 10: insertion point is anchor + 1 = 11
 	assert.Equal(t, 11, startLine, "buffer start should be insertion point (anchor + 1)")
 	assert.Equal(t, 11, endLine, "buffer end equals start for pure additions")
 }
 
-func TestGetClusterBufferRange_OnlyAdditionsBeyondBuffer(t *testing.T) {
+func TestGetStageBufferRange_OnlyAdditionsBeyondBuffer(t *testing.T) {
 	// When additions extend beyond the original buffer, the insertion point is still anchor + 1
 
 	diff := &DiffResult{
@@ -1061,13 +1041,13 @@ func TestGetClusterBufferRange_OnlyAdditionsBeyondBuffer(t *testing.T) {
 		NewLineCount: 15,
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 11,
-		EndLine:   15,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  11,
+		endLine:    15,
+		rawChanges: diff.Changes,
 	}
 
-	startLine, endLine := getClusterBufferRange(cluster, 1, diff, nil)
+	startLine, endLine := getStageBufferRange(stage, 1, diff, nil)
 
 	// Pure additions with anchor at line 10: insertion point is anchor + 1 = 11
 	assert.Equal(t, 11, startLine, "buffer start should be insertion point (anchor + 1)")
@@ -1107,32 +1087,23 @@ func TestCreateStages_EmptyNewLines(t *testing.T) {
 	}
 }
 
-func TestClusterDistanceFromCursor_CursorAtZero(t *testing.T) {
+func TestStageDistanceFromCursor_CursorAtZero(t *testing.T) {
 	// Edge case: cursor at line 0 (invalid but should handle gracefully)
 
-	diff := &DiffResult{
-		Changes: map[int]LineChange{
-			5: {Type: ChangeModification, NewLineNum: 5, OldLineNum: 5, Content: "mod", OldContent: "old"},
-		},
-		OldLineCount: 10,
-		NewLineCount: 10,
-	}
-
-	cluster := &ChangeCluster{
-		StartLine: 5,
-		EndLine:   5,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		BufferStart: 5,
+		BufferEnd:   5,
 	}
 
 	// Cursor at line 0
-	distance := clusterDistanceFromCursor(cluster, 0, 1, diff)
+	distance := stageDistanceFromCursor(stage, 0)
 
-	// Buffer line for change is 5, cursor is 0
+	// Buffer line for stage is 5, cursor is 0
 	// Distance should be 5 - 0 = 5
 	assert.Equal(t, 5, distance, "distance from cursor 0 to line 5")
 }
 
-func TestGetClusterBufferRange_AllAdditionsNoValidAnchor(t *testing.T) {
+func TestGetStageBufferRange_AllAdditionsNoValidAnchor(t *testing.T) {
 	// Edge case: all additions with OldLineNum=0 and no LineMapping
 
 	diff := &DiffResult{
@@ -1147,21 +1118,21 @@ func TestGetClusterBufferRange_AllAdditionsNoValidAnchor(t *testing.T) {
 		LineMapping:  nil, // No mapping available
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 5,
-		EndLine:   7,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  5,
+		endLine:    7,
+		rawChanges: diff.Changes,
 	}
 
-	startLine, endLine := getClusterBufferRange(cluster, 1, diff, nil)
+	startLine, endLine := getStageBufferRange(stage, 1, diff, nil)
 
-	// Should fall back to cluster.StartLine + baseLineOffset - 1 = 5 + 1 - 1 = 5
-	assert.Equal(t, 5, startLine, "should fallback to cluster.StartLine")
+	// Should fall back to stage.startLine + baseLineOffset - 1 = 5 + 1 - 1 = 5
+	assert.Equal(t, 5, startLine, "should fallback to stage.startLine")
 	// For pure additions, maxOldLine = minOldLine
 	assert.Equal(t, 5, endLine, "should equal startLine for pure additions")
 }
 
-func TestGetClusterBufferRange_BaseLineOffsetZero(t *testing.T) {
+func TestGetStageBufferRange_BaseLineOffsetZero(t *testing.T) {
 	// Edge case: baseLineOffset = 0
 
 	diff := &DiffResult{
@@ -1172,13 +1143,13 @@ func TestGetClusterBufferRange_BaseLineOffsetZero(t *testing.T) {
 		NewLineCount: 10,
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 5,
-		EndLine:   5,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  5,
+		endLine:    5,
+		rawChanges: diff.Changes,
 	}
 
-	startLine, endLine := getClusterBufferRange(cluster, 0, diff, nil)
+	startLine, endLine := getStageBufferRange(stage, 0, diff, nil)
 
 	// With baseLineOffset=0: bufferLine = 5 + 0 - 1 = 4
 	assert.Equal(t, 4, startLine, "buffer start with offset 0")
@@ -1272,33 +1243,23 @@ func TestCreateStages_SingleClusterEntirelyOutsideViewport(t *testing.T) {
 		"FirstNeedsNavigation should be true when cluster is outside viewport")
 }
 
-func TestClusterNeedsNavigation_PartiallyVisible(t *testing.T) {
-	// Test clusterNeedsNavigation for partially visible cluster
+func TestStageNeedsNavigation_PartiallyVisible(t *testing.T) {
+	// Test stageNeedsNavigation for partially visible stage
 
-	diff := &DiffResult{
-		Changes: map[int]LineChange{
-			45: {Type: ChangeModification, NewLineNum: 45, OldLineNum: 45, Content: "mod1", OldContent: "old1"},
-			55: {Type: ChangeModification, NewLineNum: 55, OldLineNum: 55, Content: "mod2", OldContent: "old2"},
-		},
-		OldLineCount: 60,
-		NewLineCount: 60,
+	stage := &Stage{
+		BufferStart: 45,
+		BufferEnd:   55,
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 45,
-		EndLine:   55,
-		Changes:   diff.Changes,
-	}
-
-	// Viewport 1-50: cluster 45-55 is partially visible
+	// Viewport 1-50: stage 45-55 is partially visible
 	// Cursor at 47: distance to 45-55 is 0 (cursor within range)
-	needsNav := clusterNeedsNavigation(cluster, 47, 1, 50, 1, diff, 3)
+	needsNav := stageNeedsNavigation(stage, 47, 1, 50, 3)
 
-	// Not entirely outside viewport, cursor within cluster
-	assert.False(t, needsNav, "should not need navigation when cursor is within cluster")
+	// Not entirely outside viewport, cursor within stage
+	assert.False(t, needsNav, "should not need navigation when cursor is within stage")
 
 	// Cursor at 10: distance to 45-55 is 35
-	needsNav = clusterNeedsNavigation(cluster, 10, 1, 50, 1, diff, 3)
+	needsNav = stageNeedsNavigation(stage, 10, 1, 50, 3)
 
 	// Not entirely outside viewport, but far from cursor
 	assert.True(t, needsNav, "should need navigation when far from cursor")
@@ -1335,27 +1296,27 @@ func TestCreateStages_NoViewportInfo(t *testing.T) {
 	assert.Equal(t, 10, result.Stages[0].BufferStart, "closer stage first")
 }
 
-func TestGetClusterNewLineRange_NoNewLineNum(t *testing.T) {
-	// Edge case: changes have NewLineNum=0, should fallback to cluster coordinates
+func TestGetStageNewLineRange_NoNewLineNum(t *testing.T) {
+	// Edge case: changes have NewLineNum=0, should fallback to stage coordinates
 
-	cluster := &ChangeCluster{
-		StartLine: 5,
-		EndLine:   10,
-		Changes: map[int]LineChange{
+	stage := &Stage{
+		startLine: 5,
+		endLine:   10,
+		rawChanges: map[int]LineChange{
 			5: {Type: ChangeModification, NewLineNum: 0, OldLineNum: 5, Content: "mod"},
 			7: {Type: ChangeModification, NewLineNum: 0, OldLineNum: 7, Content: "mod"},
 		},
 	}
 
-	startLine, endLine := getClusterNewLineRange(cluster)
+	startLine, endLine := getStageNewLineRange(stage)
 
-	// Should fallback to cluster.StartLine and cluster.EndLine
-	assert.Equal(t, 5, startLine, "should fallback to cluster.StartLine")
-	assert.Equal(t, 10, endLine, "should fallback to cluster.EndLine")
+	// Should fallback to stage.startLine and stage.endLine
+	assert.Equal(t, 5, startLine, "should fallback to stage.startLine")
+	assert.Equal(t, 10, endLine, "should fallback to stage.endLine")
 }
 
-func TestBuildStagesFromClusters_SingleDeletion(t *testing.T) {
-	// Edge case: cluster with only deletions (no new content)
+func TestFinalizeStages_SingleDeletion(t *testing.T) {
+	// Edge case: stage with only deletions (no new content)
 
 	diff := &DiffResult{
 		Changes: map[int]LineChange{
@@ -1365,15 +1326,17 @@ func TestBuildStagesFromClusters_SingleDeletion(t *testing.T) {
 		NewLineCount: 9,
 	}
 
-	cluster := &ChangeCluster{
-		StartLine: 5,
-		EndLine:   5,
-		Changes:   diff.Changes,
+	stage := &Stage{
+		startLine:  5,
+		endLine:    5,
+		rawChanges: diff.Changes,
 	}
+	stage.BufferStart, stage.BufferEnd = getStageBufferRange(stage, 1, diff, nil)
 
 	newLines := []string{"1", "2", "3", "4", "6", "7", "8", "9", "10"} // Line 5 deleted
 
-	stages := buildStagesFromClusters([]*ChangeCluster{cluster}, newLines, "test.go", 1, diff)
+	stages := []*Stage{stage}
+	finalizeStages(stages, newLines, "test.go", 1, diff)
 
 	assert.Equal(t, 1, len(stages), "should have 1 stage")
 	// For deletions, lines might be empty or contain surrounding context

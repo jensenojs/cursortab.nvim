@@ -8,15 +8,20 @@ import (
 
 // Stage represents a single stage of changes to apply
 type Stage struct {
-	BufferStart  int                          // 1-indexed buffer coordinate
-	BufferEnd    int                          // 1-indexed, inclusive
-	Lines        []string                     // New content for this stage
-	Changes      map[int]LineChange           // Changes keyed by line num relative to stage
-	Groups       []*Group                     // Pre-computed groups for rendering
-	CursorLine   int                          // Cursor position (1-indexed, relative to stage)
-	CursorCol    int                          // Cursor column (0-indexed)
+	BufferStart  int                           // 1-indexed buffer coordinate
+	BufferEnd    int                           // 1-indexed, inclusive
+	Lines        []string                      // New content for this stage
+	Changes      map[int]LineChange            // Changes keyed by line num relative to stage
+	Groups       []*Group                      // Pre-computed groups for rendering
+	CursorLine   int                           // Cursor position (1-indexed, relative to stage)
+	CursorCol    int                           // Cursor column (0-indexed)
 	CursorTarget *types.CursorPredictionTarget // Navigation target
 	IsLastStage  bool
+
+	// Unexported fields for construction (not serialized)
+	rawChanges map[int]LineChange // Original changes with absolute line nums
+	startLine  int                // First change line (absolute, 1-indexed)
+	endLine    int                // Last change line (absolute, 1-indexed)
 }
 
 // StagingResult contains the result of CreateStages
@@ -25,12 +30,6 @@ type StagingResult struct {
 	FirstNeedsNavigation bool
 }
 
-// ChangeCluster represents a group of nearby changes (within threshold lines)
-type ChangeCluster struct {
-	StartLine int                // First line with changes (1-indexed)
-	EndLine   int                // Last line with changes (1-indexed)
-	Changes   map[int]LineChange // Map of line number to change operation
-}
 
 // CreateStages is the main entry point for creating stages from a diff result.
 // Always returns stages (at least 1 stage for non-empty changes).
@@ -76,37 +75,35 @@ func CreateStages(
 	sort.Ints(inViewChanges)
 	sort.Ints(outViewChanges)
 
-	// Step 2: Group changes by proximity within each partition
-	inViewClusters := groupChangesByProximity(diff, inViewChanges, proximityThreshold)
-	outViewClusters := groupChangesByProximity(diff, outViewChanges, proximityThreshold)
+	// Step 2: Group changes into partial stages
+	inViewStages := groupChangesIntoStages(diff, inViewChanges, proximityThreshold, baseLineOffset)
+	outViewStages := groupChangesIntoStages(diff, outViewChanges, proximityThreshold, baseLineOffset)
+	allStages := append(inViewStages, outViewStages...)
 
-	allClusters := append(inViewClusters, outViewClusters...)
-
-	if len(allClusters) == 0 {
+	if len(allStages) == 0 {
 		return nil
 	}
 
-	// Step 3: Sort clusters by cursor distance
-	sort.SliceStable(allClusters, func(i, j int) bool {
-		distI := clusterDistanceFromCursor(allClusters[i], cursorRow, baseLineOffset, diff)
-		distJ := clusterDistanceFromCursor(allClusters[j], cursorRow, baseLineOffset, diff)
+	// Step 3: Sort stages by cursor distance
+	sort.SliceStable(allStages, func(i, j int) bool {
+		distI := stageDistanceFromCursor(allStages[i], cursorRow)
+		distJ := stageDistanceFromCursor(allStages[j], cursorRow)
 		if distI != distJ {
 			return distI < distJ
 		}
-		return allClusters[i].StartLine < allClusters[j].StartLine
+		return allStages[i].startLine < allStages[j].startLine
 	})
 
-	// Step 4: Create stages from clusters
-	stages := buildStagesFromClusters(allClusters, newLines, filePath, baseLineOffset, diff)
+	// Step 4: Finalize stages (content, cursor targets)
+	finalizeStages(allStages, newLines, filePath, baseLineOffset, diff)
 
 	// Step 5: Check if first stage needs navigation UI
-	firstNeedsNav := clusterNeedsNavigation(
-		allClusters[0], cursorRow, viewportTop, viewportBottom,
-		baseLineOffset, diff, proximityThreshold,
+	firstNeedsNav := stageNeedsNavigation(
+		allStages[0], cursorRow, viewportTop, viewportBottom, proximityThreshold,
 	)
 
 	return &StagingResult{
-		Stages:               stages,
+		Stages:               allStages,
 		FirstNeedsNavigation: firstNeedsNav,
 	}
 }
@@ -132,83 +129,84 @@ func GetBufferLineForChange(change LineChange, mapKey int, baseLineOffset int, m
 	return mapKey + baseLineOffset - 1
 }
 
-// groupChangesByProximity groups sorted line numbers into clusters based on proximity.
-func groupChangesByProximity(diff *DiffResult, lineNumbers []int, proximityThreshold int) []*ChangeCluster {
+// groupChangesIntoStages groups sorted line numbers into partial Stage structs based on proximity.
+// The returned stages have rawChanges, startLine, endLine, BufferStart, and BufferEnd populated.
+// Other fields are left as zero values to be filled by finalizeStages.
+func groupChangesIntoStages(diff *DiffResult, lineNumbers []int, proximityThreshold int, baseLineOffset int) []*Stage {
 	if len(lineNumbers) == 0 {
 		return nil
 	}
 
-	var clusters []*ChangeCluster
-	var currentCluster *ChangeCluster
+	var stages []*Stage
+	var currentStage *Stage
 
 	for _, lineNum := range lineNumbers {
 		change := diff.Changes[lineNum]
 		endLine := lineNum
 
-		if currentCluster == nil {
-			currentCluster = &ChangeCluster{
-				StartLine: lineNum,
-				EndLine:   endLine,
-				Changes:   make(map[int]LineChange),
+		if currentStage == nil {
+			currentStage = &Stage{
+				startLine:  lineNum,
+				endLine:    endLine,
+				rawChanges: make(map[int]LineChange),
 			}
-			currentCluster.Changes[lineNum] = change
+			currentStage.rawChanges[lineNum] = change
 		} else {
-			gap := lineNum - currentCluster.EndLine
+			gap := lineNum - currentStage.endLine
 			if gap <= proximityThreshold {
-				currentCluster.Changes[lineNum] = change
-				if endLine > currentCluster.EndLine {
-					currentCluster.EndLine = endLine
+				currentStage.rawChanges[lineNum] = change
+				if endLine > currentStage.endLine {
+					currentStage.endLine = endLine
 				}
 			} else {
-				clusters = append(clusters, currentCluster)
-				currentCluster = &ChangeCluster{
-					StartLine: lineNum,
-					EndLine:   endLine,
-					Changes:   make(map[int]LineChange),
+				// Compute buffer range before appending
+				currentStage.BufferStart, currentStage.BufferEnd = getStageBufferRange(currentStage, baseLineOffset, diff, nil)
+				stages = append(stages, currentStage)
+				currentStage = &Stage{
+					startLine:  lineNum,
+					endLine:    endLine,
+					rawChanges: make(map[int]LineChange),
 				}
-				currentCluster.Changes[lineNum] = change
+				currentStage.rawChanges[lineNum] = change
 			}
 		}
 	}
 
-	if currentCluster != nil {
-		clusters = append(clusters, currentCluster)
+	if currentStage != nil {
+		currentStage.BufferStart, currentStage.BufferEnd = getStageBufferRange(currentStage, baseLineOffset, diff, nil)
+		stages = append(stages, currentStage)
 	}
 
-	return clusters
+	return stages
 }
 
-// clusterNeedsNavigation determines if a cluster requires cursor prediction UI.
-func clusterNeedsNavigation(cluster *ChangeCluster, cursorRow, viewportTop, viewportBottom, baseLineOffset int, diff *DiffResult, distThreshold int) bool {
-	bufferStart, bufferEnd := getClusterBufferRange(cluster, baseLineOffset, diff, nil)
-
+// stageNeedsNavigation determines if a stage requires cursor prediction UI.
+func stageNeedsNavigation(stage *Stage, cursorRow, viewportTop, viewportBottom, distThreshold int) bool {
 	if viewportTop > 0 && viewportBottom > 0 {
-		entirelyOutside := bufferEnd < viewportTop || bufferStart > viewportBottom
+		entirelyOutside := stage.BufferEnd < viewportTop || stage.BufferStart > viewportBottom
 		if entirelyOutside {
 			return true
 		}
 	}
 
-	distance := clusterDistanceFromCursor(cluster, cursorRow, baseLineOffset, diff)
+	distance := stageDistanceFromCursor(stage, cursorRow)
 	return distance > distThreshold
 }
 
-// clusterDistanceFromCursor calculates the minimum distance from cursor to a cluster.
-func clusterDistanceFromCursor(cluster *ChangeCluster, cursorRow int, baseLineOffset int, diff *DiffResult) int {
-	bufferStartLine, bufferEndLine := getClusterBufferRange(cluster, baseLineOffset, diff, nil)
-
-	if cursorRow >= bufferStartLine && cursorRow <= bufferEndLine {
+// stageDistanceFromCursor calculates the minimum distance from cursor to a stage.
+func stageDistanceFromCursor(stage *Stage, cursorRow int) int {
+	if cursorRow >= stage.BufferStart && cursorRow <= stage.BufferEnd {
 		return 0
 	}
-	if cursorRow < bufferStartLine {
-		return bufferStartLine - cursorRow
+	if cursorRow < stage.BufferStart {
+		return stage.BufferStart - cursorRow
 	}
-	return cursorRow - bufferEndLine
+	return cursorRow - stage.BufferEnd
 }
 
-// getClusterBufferRange determines the buffer line range for a cluster using coordinate mapping.
+// getStageBufferRange determines the buffer line range for a stage using coordinate mapping.
 // If bufferLines is non-nil, it will be populated with lineNum -> bufferLine mappings.
-func getClusterBufferRange(cluster *ChangeCluster, baseLineOffset int, diff *DiffResult, bufferLines map[int]int) (int, int) {
+func getStageBufferRange(stage *Stage, baseLineOffset int, diff *DiffResult, bufferLines map[int]int) (int, int) {
 	minOldLine := -1
 	maxOldLine := -1
 	minOldLineFromNonAdditions := -1
@@ -216,7 +214,7 @@ func getClusterBufferRange(cluster *ChangeCluster, baseLineOffset int, diff *Dif
 	hasNonAdditions := false
 	maxNewLineNum := 0
 
-	for lineNum, change := range cluster.Changes {
+	for lineNum, change := range stage.rawChanges {
 		bufferLine := GetBufferLineForChange(change, lineNum, baseLineOffset, diff.LineMapping)
 		if bufferLines != nil {
 			bufferLines[lineNum] = bufferLine
@@ -266,13 +264,13 @@ func getClusterBufferRange(cluster *ChangeCluster, baseLineOffset int, diff *Dif
 	hadValidAnchor := minOldLine != -1
 
 	if minOldLine == -1 {
-		minOldLine = cluster.StartLine + baseLineOffset - 1
+		minOldLine = stage.startLine + baseLineOffset - 1
 	}
 	if maxOldLine == -1 {
 		if hasAdditions && !hasNonAdditions {
 			maxOldLine = minOldLine
 		} else {
-			maxOldLine = cluster.EndLine + baseLineOffset - 1
+			maxOldLine = stage.endLine + baseLineOffset - 1
 		}
 	}
 
@@ -280,7 +278,7 @@ func getClusterBufferRange(cluster *ChangeCluster, baseLineOffset int, diff *Dif
 	// where the new content will be INSERTED, not the anchor. Additions are inserted
 	// AFTER the anchor line, so we need to add 1 to get the insertion point.
 	// E.g., if anchor is old line 2, new content appears starting at buffer line 3.
-	// Note: We only do this when there was a valid anchor (not fallback to cluster.StartLine)
+	// Note: We only do this when there was a valid anchor (not fallback to stage.startLine)
 	if hasAdditions && !hasNonAdditions && hadValidAnchor {
 		minOldLine++
 		maxOldLine = minOldLine // For pure additions, start == end (insertion point)
@@ -289,12 +287,12 @@ func getClusterBufferRange(cluster *ChangeCluster, baseLineOffset int, diff *Dif
 	return minOldLine, maxOldLine
 }
 
-// getClusterNewLineRange determines the new line range for content extraction.
-func getClusterNewLineRange(cluster *ChangeCluster) (int, int) {
+// getStageNewLineRange determines the new line range for content extraction.
+func getStageNewLineRange(stage *Stage) (int, int) {
 	minNewLine := -1
 	maxNewLine := -1
 
-	for _, change := range cluster.Changes {
+	for _, change := range stage.rawChanges {
 		if change.NewLineNum > 0 {
 			if minNewLine == -1 || change.NewLineNum < minNewLine {
 				minNewLine = change.NewLineNum
@@ -306,28 +304,28 @@ func getClusterNewLineRange(cluster *ChangeCluster) (int, int) {
 	}
 
 	if minNewLine == -1 {
-		minNewLine = cluster.StartLine
+		minNewLine = stage.startLine
 	}
 	if maxNewLine == -1 {
-		maxNewLine = cluster.EndLine
+		maxNewLine = stage.endLine
 	}
 
 	return minNewLine, maxNewLine
 }
 
-// buildStagesFromClusters creates Stages from clusters.
-func buildStagesFromClusters(clusters []*ChangeCluster, newLines []string, filePath string, baseLineOffset int, diff *DiffResult) []*Stage {
-	var stages []*Stage
+// finalizeStages populates the remaining fields of partial stages.
+// It extracts content, remaps changes to relative line numbers, computes groups,
+// and sets cursor targets based on sort order.
+func finalizeStages(stages []*Stage, newLines []string, filePath string, baseLineOffset int, diff *DiffResult) {
+	for i, stage := range stages {
+		isLastStage := i == len(stages)-1
 
-	for i, cluster := range clusters {
-		isLastStage := i == len(clusters)-1
-
-		// Get buffer range and buffer line mappings for this cluster
+		// Get buffer line mappings for this stage
 		lineNumToBufferLine := make(map[int]int)
-		bufferStart, bufferEnd := getClusterBufferRange(cluster, baseLineOffset, diff, lineNumToBufferLine)
+		getStageBufferRange(stage, baseLineOffset, diff, lineNumToBufferLine)
 
 		// Get new line range for content extraction
-		newStartLine, newEndLine := getClusterNewLineRange(cluster)
+		newStartLine, newEndLine := getStageNewLineRange(stage)
 
 		// Extract the new content using new coordinates
 		var stageLines []string
@@ -341,7 +339,7 @@ func buildStagesFromClusters(clusters []*ChangeCluster, newLines []string, fileP
 		stageOldLines := make([]string, len(stageLines))
 		remappedChanges := make(map[int]LineChange)
 		relativeToBufferLine := make(map[int]int)
-		for lineNum, change := range cluster.Changes {
+		for lineNum, change := range stage.rawChanges {
 			newLineNum := lineNum
 			if change.NewLineNum > 0 {
 				newLineNum = change.NewLineNum
@@ -354,7 +352,7 @@ func buildStagesFromClusters(clusters []*ChangeCluster, newLines []string, fileP
 			}
 
 			if relativeLine > 0 && relativeLine <= len(stageLines) {
-				// Use pre-computed buffer line from getClusterBufferRange
+				// Use pre-computed buffer line from getStageBufferRange
 				relativeToBufferLine[relativeLine] = lineNumToBufferLine[lineNum]
 
 				remappedChange := change
@@ -368,7 +366,7 @@ func buildStagesFromClusters(clusters []*ChangeCluster, newLines []string, fileP
 
 		// Find the last modification's relative line number to determine which additions are "after"
 		lastModificationLine := 0
-		modificationBufferLine := bufferStart
+		modificationBufferLine := stage.BufferStart
 		for relativeLine, change := range remappedChanges {
 			if change.Type == ChangeModification || change.Type == ChangeAppendChars ||
 				change.Type == ChangeDeleteChars || change.Type == ChangeReplaceChars {
@@ -391,7 +389,7 @@ func buildStagesFromClusters(clusters []*ChangeCluster, newLines []string, fileP
 			} else if bufLine, ok := relativeToBufferLine[g.StartLine]; ok {
 				g.BufferLine = bufLine
 			} else {
-				g.BufferLine = bufferStart + g.StartLine - 1
+				g.BufferLine = stage.BufferStart + g.StartLine - 1
 			}
 		}
 
@@ -402,33 +400,30 @@ func buildStagesFromClusters(clusters []*ChangeCluster, newLines []string, fileP
 		if isLastStage {
 			cursorTarget = &types.CursorPredictionTarget{
 				RelativePath:    filePath,
-				LineNumber:      int32(bufferEnd),
+				LineNumber:      int32(stage.BufferEnd),
 				ShouldRetrigger: true,
 			}
 		} else {
-			nextCluster := clusters[i+1]
-			nextBufferStart, _ := getClusterBufferRange(nextCluster, baseLineOffset, diff, nil)
+			nextStage := stages[i+1]
 			cursorTarget = &types.CursorPredictionTarget{
 				RelativePath:    filePath,
-				LineNumber:      int32(nextBufferStart),
+				LineNumber:      int32(nextStage.BufferStart),
 				ShouldRetrigger: false,
 			}
 		}
 
-		stages = append(stages, &Stage{
-			BufferStart:  bufferStart,
-			BufferEnd:    bufferEnd,
-			Lines:        stageLines,
-			Changes:      remappedChanges,
-			Groups:       groups,
-			CursorLine:   cursorLine,
-			CursorCol:    cursorCol,
-			CursorTarget: cursorTarget,
-			IsLastStage:  isLastStage,
-		})
-	}
+		// Populate the stage's exported fields
+		stage.Lines = stageLines
+		stage.Changes = remappedChanges
+		stage.Groups = groups
+		stage.CursorLine = cursorLine
+		stage.CursorCol = cursorCol
+		stage.CursorTarget = cursorTarget
+		stage.IsLastStage = isLastStage
 
-	return stages
+		// Clear rawChanges (no longer needed)
+		stage.rawChanges = nil
+	}
 }
 
 // AnalyzeDiffForStagingWithViewport analyzes the diff with viewport-aware grouping
