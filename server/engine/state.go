@@ -32,28 +32,31 @@ type Transition struct {
 // transitions defines all valid state transitions in the engine.
 // This table serves as documentation and enables validation of state changes.
 //
-// State Machine Overview:
+// State Machine:
 //
-//	stateIdle
-//	├─[TextChangeTimeout/IdleTimeout]──► statePendingCompletion
-//	│                                      │
-//	│                                      └─[CompletionReady]──► stateHasCompletion
-//	│                                                              │
-//	│                                                              ├─[Tab + cursor target]──► stateHasCursorTarget
-//	│                                                              │                           │
-//	│                                                              │                           ├─[Tab + prefetch ready]──► stateHasCompletion
-//	│                                                              │                           │
-//	│                                                              │                           └─[Tab + shouldRetrigger]──► statePendingCompletion
-//	│                                                              │
-//	│                                                              └─[Tab + no cursor target]
-//	│                                                                  │
-//	│                                                                  ├─[shouldRetrigger]──► prefetch started ──► stateIdle
-//	│                                                                  │
-//	│                                                                  └─[no retrigger]──► stateIdle
-//	│
-//	└─[CursorMovedNormal]──► resets idle timer, stays idle
+//	                    TextChangeTimeout / IdleTimeout
+//	  +-------+              +----------+            +-----------+
+//	  | Idle  |------------->| Pending  |----------->| Streaming |
+//	  +-------+              +----------+            +-----------+
+//	      ^                       |                       |
+//	      |                       | CompletionReady       | StreamComplete
+//	      |                       v                       |
+//	      |                  +-----------+                |
+//	      |                  | HasCompl. |<---------------+
+//	      |                  +-----------+
+//	      |                       | Tab
+//	      |         +-------------+-------------+
+//	      |         | no cursor target          | has cursor target
+//	      |         v                           v
+//	      |    (prefetch?)               +--------------+
+//	      |         |                    | HasCursorTgt |
+//	      +<--------+                    +--------------+
+//	                                          | Tab
+//	                                          v
+//	                                     (prefetch?) --> HasCompl. or Pending
 //
-// Rejection (all → stateIdle): Esc, InsertLeave, TextChanged mismatch
+//	Rejection (any -> Idle): Esc, InsertLeave, TextChanged mismatch
+//	CursorMovedNormal: resets idle timer (any state)
 var transitions = []Transition{
 	// From stateIdle
 	{stateIdle, EventTextChangeTimeout, (*Engine).doRequestCompletion},
