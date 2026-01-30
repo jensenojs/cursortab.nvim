@@ -24,6 +24,13 @@ local append_chars_extmark_id = nil -- Extmark ID for the append_chars ghost tex
 ---@type integer|nil
 local append_chars_buf = nil -- Buffer where the extmark was created
 
+---@class AppendCharsState
+---@field text string
+---@field line integer 1-indexed buffer line
+---@field col_start integer
+---@type AppendCharsState|nil
+local append_chars_state = nil
+
 -- State for cursor prediction jump text
 ---@type integer|nil
 local jump_text_extmark_id = nil
@@ -288,6 +295,7 @@ local function clear_expected_line_state()
 	original_len = nil
 	append_chars_extmark_id = nil
 	append_chars_buf = nil
+	append_chars_state = nil
 end
 
 -- Render append_chars: show only the appended part as ghost text
@@ -300,12 +308,26 @@ local function render_append_chars(group, nvim_line, current_buf, is_first_appen
 	local content = group.lines[1] or ""
 	local col_start = group.col_start or 0
 	local appended_text = string.sub(content, col_start + 1)
+	local render_append = (config.get().blink or {}).render_append_chars ~= false
 
 	-- Store expected line state for partial typing optimization (only first append_chars)
 	if is_first_append then
 		expected_line = content
 		expected_line_num = group.buffer_line
 		original_len = col_start
+		if appended_text and appended_text ~= "" then
+			append_chars_state = {
+				text = appended_text,
+				line = group.buffer_line,
+				col_start = col_start,
+			}
+		else
+			append_chars_state = nil
+		end
+	end
+
+	if not render_append then
+		return is_first_append
 	end
 
 	if appended_text and appended_text ~= "" then
@@ -770,6 +792,15 @@ end
 ---@return boolean
 function ui.has_cursor_prediction()
 	return has_cursor_prediction
+end
+
+---Get append_chars state for external consumers (e.g., blink source).
+---@return AppendCharsState|nil
+function ui.get_append_chars()
+	if not append_chars_state then
+		return nil
+	end
+	return vim.deepcopy(append_chars_state)
 end
 
 -- Check if typed content matches the expected completion (for partial typing optimization)

@@ -126,10 +126,44 @@ require("cursortab").setup({
   debug = {
     immediate_shutdown = false,  -- Shutdown daemon immediately when no clients
   },
+
+  blink = {
+    enabled = false,             -- Enable blink source
+    render_append_chars = true,  -- Keep native append_chars ghost text
+  },
 })
 ```
 
 For detailed configuration documentation, see `:help cursortab-config`.
+
+### blink.cmp Integration
+
+This integration exposes a minimal blink source that only consumes
+`append_chars` (end-of-line ghost text). Complex diffs (multi-line edits,
+replacements, deletions, cursor prediction UI) still render via the native UI.
+
+```lua
+require("cursortab").setup({
+  keymaps = {
+    accept = false, -- Let blink manage <Tab>
+  },
+  blink = {
+    enabled = true,
+    render_append_chars = false, -- Disable native ghost text if desired
+  },
+})
+
+require("blink.cmp").setup({
+  sources = {
+    providers = {
+      cursortab = {
+        module = "cursortab.blink",
+        name = "Cursortab",
+      },
+    },
+  },
+})
+```
 
 ### Providers
 

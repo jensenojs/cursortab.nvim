@@ -98,6 +98,11 @@ Full configuration with defaults: >lua
     debug = {
       immediate_shutdown = false,
     },
+
+    blink = {
+      enabled = false,
+      render_append_chars = true,
+    },
   })
 <
 
@@ -213,6 +218,15 @@ DEBUG OPTIONS                                          *cursortab-config-debug*
       development.
 
 ------------------------------------------------------------------------------
+BLINK OPTIONS                                            *cursortab-config-blink*
+
+  `blink.enabled`
+      Enable the built-in blink.cmp source (default: false).
+
+  `blink.render_append_chars`
+      Keep native append_chars ghost text while using blink.cmp (default: true).
+
+------------------------------------------------------------------------------
 DEPRECATED OPTIONS                               *cursortab-config-deprecated*
 
 The following flat configuration keys are deprecated but still supported.
@@ -269,6 +283,37 @@ COMMANDS                                                   *cursortab-commands*
 
 :CursortabRestart                                          *:CursortabRestart*
     Stop and restart the daemon process.
+
+==============================================================================
+BLINK.CMP INTEGRATION                            *cursortab-blink-integration*
+
+cursortab.nvim provides a minimal blink.cmp source that only consumes
+append_chars (end-of-line ghost text). Complex diffs (multi-line edits,
+replacements, deletions, cursor prediction UI) still render via the native UI.
+
+Example: >lua
+
+  require("cursortab").setup({
+    keymaps = {
+      accept = false,
+    },
+    blink = {
+      enabled = true,
+      render_append_chars = false,
+    },
+  })
+
+  require("blink.cmp").setup({
+    sources = {
+      providers = {
+        cursortab = {
+          module = "cursortab.blink",
+          name = "Cursortab",
+        },
+      },
+    },
+  })
+<
 
 ==============================================================================
 ARCHITECTURE                                           *cursortab-architecture*

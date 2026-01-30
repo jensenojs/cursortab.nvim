@@ -51,6 +51,10 @@
 ---@class CursortabKeymapsConfig
 ---@field accept string|false Accept keymap (e.g., "<Tab>"), or false to disable
 
+---@class CursortabBlinkConfig
+---@field enabled boolean
+---@field render_append_chars boolean
+
 ---@class CursortabConfig
 ---@field enabled boolean
 ---@field log_level string
@@ -59,6 +63,7 @@
 ---@field behavior CursortabBehaviorConfig
 ---@field provider CursortabProviderConfig
 ---@field debug CursortabDebugConfig
+---@field blink CursortabBlinkConfig
 
 -- Default configuration
 ---@type CursortabConfig
@@ -116,6 +121,11 @@ local default_config = {
 
 	debug = {
 		immediate_shutdown = false, -- Shutdown daemon immediately when no clients are connected
+	},
+
+	blink = {
+		enabled = false,
+		render_append_chars = true,
 	},
 }
 
