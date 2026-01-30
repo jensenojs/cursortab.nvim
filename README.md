@@ -75,6 +75,10 @@ require("cursortab").setup({
   enabled = true,
   log_level = "info",  -- "trace", "debug", "info", "warn", "error"
 
+  keymaps = {
+    accept = "<Tab>",  -- Keymap to accept completion, or false to disable
+  },
+
   ui = {
     colors = {
       deletion = "#4f2f2f",      -- Background color for deletions

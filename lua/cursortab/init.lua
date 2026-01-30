@@ -16,6 +16,12 @@ function M.on_reject()
 	ui.close_all()
 end
 
+---Accept current completion/prediction if available.
+---@return boolean accepted
+function M.accept()
+	return events.accept()
+end
+
 ---RPC callback: called when completion is ready
 ---@param diff_result DiffResult Completion diff result from Go daemon
 function M.on_completion_ready(diff_result)

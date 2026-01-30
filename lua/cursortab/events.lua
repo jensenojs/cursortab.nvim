@@ -1,6 +1,7 @@
 -- Event handling and autocommands for cursortab.nvim
 
 local buffer = require("cursortab.buffer")
+local config = require("cursortab.config")
 local daemon = require("cursortab.daemon")
 local ui = require("cursortab.ui")
 
@@ -137,8 +138,12 @@ function events.setup()
 	})
 
 	-- Set up keymaps
-	vim.keymap.set("i", "<Tab>", on_tab, { noremap = true, silent = true, expr = true })
-	vim.keymap.set("n", "<Tab>", on_tab, { noremap = true, silent = true, expr = true })
+	local cfg = config.get()
+	if cfg.keymaps.accept then
+		local accept_key = cfg.keymaps.accept
+		vim.keymap.set("i", accept_key, on_tab, { noremap = true, silent = true, expr = true })
+		vim.keymap.set("n", accept_key, on_tab, { noremap = true, silent = true, expr = true })
+	end
 	vim.keymap.set("n", "<Esc>", on_escape, { noremap = true, silent = true, expr = true })
 
 	-- Set up autocommand to close completions/predictions on certain events
@@ -161,6 +166,12 @@ end
 -- Clear all completions (exposed for manual use)
 function events.clear_all_completions()
 	clear_all_completions()
+end
+
+---Accept current completion/prediction if available.
+---@return boolean accepted
+function events.accept()
+	return on_tab() == ""
 end
 
 return events
