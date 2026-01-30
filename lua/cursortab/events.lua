@@ -139,9 +139,10 @@ function events.setup()
 
 	-- Set up keymaps
 	local cfg = config.get()
-	if cfg.tab_keymap ~= false then
-		vim.keymap.set("i", "<Tab>", on_tab, { noremap = true, silent = true, expr = true })
-		vim.keymap.set("n", "<Tab>", on_tab, { noremap = true, silent = true, expr = true })
+	if cfg.keymaps.accept then
+		local accept_key = cfg.keymaps.accept
+		vim.keymap.set("i", accept_key, on_tab, { noremap = true, silent = true, expr = true })
+		vim.keymap.set("n", accept_key, on_tab, { noremap = true, silent = true, expr = true })
 	end
 	vim.keymap.set("n", "<Esc>", on_escape, { noremap = true, silent = true, expr = true })
 
@@ -169,7 +170,7 @@ end
 
 ---Accept current completion/prediction if available.
 ---@return boolean accepted
-function events.cursortab()
+function events.accept()
 	return on_tab() == ""
 end
 

@@ -18,8 +18,8 @@ end
 
 ---Accept current completion/prediction if available.
 ---@return boolean accepted
-function M.cursortab()
-	return events.cursortab()
+function M.accept()
+	return events.accept()
 end
 
 ---RPC callback: called when completion is ready

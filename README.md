@@ -74,7 +74,10 @@ use {
 require("cursortab").setup({
   enabled = true,
   log_level = "info",  -- "trace", "debug", "info", "warn", "error"
-  tab_keymap = true,    -- Whether cursortab registers <Tab>
+
+  keymaps = {
+    accept = "<Tab>",  -- Keymap to accept completion, or false to disable
+  },
 
   ui = {
     colors = {

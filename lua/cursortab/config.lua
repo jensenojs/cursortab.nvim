@@ -47,10 +47,13 @@
 ---@class CursortabDebugConfig
 ---@field immediate_shutdown boolean
 
+---@class CursortabKeymapsConfig
+---@field accept string|false Accept keymap (e.g., "<Tab>"), or false to disable
+
 ---@class CursortabConfig
 ---@field enabled boolean
 ---@field log_level string
----@field tab_keymap boolean
+---@field keymaps CursortabKeymapsConfig
 ---@field ui CursortabUIConfig
 ---@field behavior CursortabBehaviorConfig
 ---@field provider CursortabProviderConfig
@@ -61,7 +64,10 @@
 local default_config = {
 	enabled = true,
 	log_level = "info",
-	tab_keymap = true,
+
+	keymaps = {
+		accept = "<Tab>", -- Keymap to accept completion, or false to disable
+	},
 
 	ui = {
 		colors = {
@@ -257,6 +263,17 @@ local valid_log_levels = { trace = true, debug = true, info = true, warn = true,
 -- Validate configuration values
 ---@param cfg table
 local function validate_config(cfg)
+	-- Validate keymaps.accept (must be string or false)
+	if cfg.keymaps and cfg.keymaps.accept ~= nil then
+		local accept = cfg.keymaps.accept
+		if accept ~= false and type(accept) ~= "string" then
+			error("[cursortab.nvim] keymaps.accept must be a string (keymap) or false to disable")
+		end
+		if type(accept) == "string" and accept == "" then
+			error("[cursortab.nvim] keymaps.accept cannot be an empty string (use false to disable)")
+		end
+	end
+
 	-- Validate provider type
 	if cfg.provider and cfg.provider.type then
 		if not valid_provider_types[cfg.provider.type] then

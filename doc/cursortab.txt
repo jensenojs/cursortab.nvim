@@ -46,7 +46,10 @@ Full configuration with defaults: >lua
   require("cursortab").setup({
     enabled = true,
     log_level = "info",  -- "trace", "debug", "info", "warn", "error"
-    tab_keymap = true,    -- Whether cursortab registers <Tab>
+
+    keymaps = {
+      accept = "<Tab>",  -- Keymap to accept completion, or false to disable
+    },
 
     ui = {
       colors = {
@@ -97,11 +100,14 @@ Full configuration with defaults: >lua
   })
 <
 
--KEYMAP OPTIONS                                      *cursortab-config-keymap*
+KEYMAP OPTIONS                                      *cursortab-config-keymap*
 
-  `tab_keymap`
-      Whether cursortab registers <Tab> in insert/normal mode (default: true).
-      Set to false when managing <Tab> yourself (e.g. blink.cmp).
+keymaps.accept                                  *cursortab-config-keymaps-accept*
+
+  The keymap to accept completions in insert/normal mode. Can be a keymap
+  string (e.g., "<Tab>") or `false` to disable the built-in keymap entirely.
+  Default: "<Tab>".
+  Set to `false` when managing the accept keymap yourself (e.g., blink.cmp).
 
 ------------------------------------------------------------------------------
 UI OPTIONS                                                *cursortab-config-ui*
