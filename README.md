@@ -74,6 +74,7 @@ use {
 require("cursortab").setup({
   enabled = true,
   log_level = "info",  -- "trace", "debug", "info", "warn", "error"
+  tab_keymap = true,    -- Whether cursortab registers <Tab>
 
   ui = {
     colors = {

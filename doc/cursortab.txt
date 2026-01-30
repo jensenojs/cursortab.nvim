@@ -46,6 +46,7 @@ Full configuration with defaults: >lua
   require("cursortab").setup({
     enabled = true,
     log_level = "info",  -- "trace", "debug", "info", "warn", "error"
+    tab_keymap = true,    -- Whether cursortab registers <Tab>
 
     ui = {
       colors = {
@@ -95,6 +96,12 @@ Full configuration with defaults: >lua
     },
   })
 <
+
+-KEYMAP OPTIONS                                      *cursortab-config-keymap*
+
+  `tab_keymap`
+      Whether cursortab registers <Tab> in insert/normal mode (default: true).
+      Set to false when managing <Tab> yourself (e.g. blink.cmp).
 
 ------------------------------------------------------------------------------
 UI OPTIONS                                                *cursortab-config-ui*

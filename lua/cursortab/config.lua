@@ -50,6 +50,7 @@
 ---@class CursortabConfig
 ---@field enabled boolean
 ---@field log_level string
+---@field tab_keymap boolean
 ---@field ui CursortabUIConfig
 ---@field behavior CursortabBehaviorConfig
 ---@field provider CursortabProviderConfig
@@ -60,6 +61,7 @@
 local default_config = {
 	enabled = true,
 	log_level = "info",
+	tab_keymap = true,
 
 	ui = {
 		colors = {
