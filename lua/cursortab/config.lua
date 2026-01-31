@@ -53,7 +53,7 @@
 
 ---@class CursortabBlinkConfig
 ---@field enabled boolean
----@field render_append_chars boolean
+---@field ghost_text boolean
 
 ---@class CursortabConfig
 ---@field enabled boolean
@@ -62,8 +62,8 @@
 ---@field ui CursortabUIConfig
 ---@field behavior CursortabBehaviorConfig
 ---@field provider CursortabProviderConfig
----@field debug CursortabDebugConfig
 ---@field blink CursortabBlinkConfig
+---@field debug CursortabDebugConfig
 
 -- Default configuration
 ---@type CursortabConfig
@@ -119,13 +119,13 @@ local default_config = {
 		},
 	},
 
-	debug = {
-		immediate_shutdown = false, -- Shutdown daemon immediately when no clients are connected
-	},
-
 	blink = {
 		enabled = false,
-		render_append_chars = true,
+		ghost_text = true,
+	},
+
+	debug = {
+		immediate_shutdown = false, -- Shutdown daemon immediately when no clients are connected
 	},
 }
 

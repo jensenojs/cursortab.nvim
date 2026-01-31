@@ -95,13 +95,13 @@ Full configuration with defaults: >lua
       },
     },
 
-    debug = {
-      immediate_shutdown = false,
-    },
-
     blink = {
       enabled = false,
-      render_append_chars = true,
+      ghost_text = true,
+    },
+
+    debug = {
+      immediate_shutdown = false,
     },
   })
 <
@@ -211,20 +211,20 @@ PROVIDER OPTIONS                                    *cursortab-config-provider*
         }
 <
 ------------------------------------------------------------------------------
-DEBUG OPTIONS                                          *cursortab-config-debug*
-
-  `immediate_shutdown`
-      Shutdown daemon immediately when no clients are connected. Useful for
-      development.
-
-------------------------------------------------------------------------------
 BLINK OPTIONS                                            *cursortab-config-blink*
 
   `blink.enabled`
       Enable the built-in blink.cmp source (default: false).
 
-  `blink.render_append_chars`
-      Keep native append_chars ghost text while using blink.cmp (default: true).
+  `blink.ghost_text`
+      Show native ghost text alongside blink menu (default: true).
+
+------------------------------------------------------------------------------
+DEBUG OPTIONS                                          *cursortab-config-debug*
+
+  `immediate_shutdown`
+      Shutdown daemon immediately when no clients are connected. Useful for
+      development.
 
 ------------------------------------------------------------------------------
 DEPRECATED OPTIONS                               *cursortab-config-deprecated*
@@ -299,7 +299,7 @@ Example: >lua
     },
     blink = {
       enabled = true,
-      render_append_chars = false,
+      ghost_text = false,
     },
   })
 
@@ -308,7 +308,11 @@ Example: >lua
       providers = {
         cursortab = {
           module = "cursortab.blink",
-          name = "Cursortab",
+          name = "cursortab",
+          async = true,
+          -- Should match provider.completion_timeout in cursortab config
+          timeout_ms = 5000,
+          score_offset = 50, -- Higher priority among suggestions
         },
       },
     },

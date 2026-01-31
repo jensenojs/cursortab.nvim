@@ -308,7 +308,7 @@ local function render_append_chars(group, nvim_line, current_buf, is_first_appen
 	local content = group.lines[1] or ""
 	local col_start = group.col_start or 0
 	local appended_text = string.sub(content, col_start + 1)
-	local render_append = (config.get().blink or {}).render_append_chars ~= false
+	local render_ghost_text = config.get().blink.ghost_text
 
 	-- Store expected line state for partial typing optimization (only first append_chars)
 	if is_first_append then
@@ -326,7 +326,7 @@ local function render_append_chars(group, nvim_line, current_buf, is_first_appen
 		end
 	end
 
-	if not render_append then
+	if not render_ghost_text then
 		return is_first_append
 	end
 

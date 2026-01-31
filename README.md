@@ -24,6 +24,7 @@ Currently supports custom models and models form Zeta (Zed) and SweepAI.
     * [FIM Provider](#fim-provider)
     * [Sweep Provider](#sweep-provider)
     * [Zeta Provider](#zeta-provider)
+  * [blink.cmp Integration](#blinkcmp-integration)
 * [Usage](#usage)
   * [Commands](#commands)
 * [Development](#development)
@@ -123,47 +124,18 @@ require("cursortab").setup({
     },
   },
 
-  debug = {
-    immediate_shutdown = false,  -- Shutdown daemon immediately when no clients
+  blink = {
+    enabled = false,    -- Enable blink source
+    ghost_text = true,  -- Show native ghost text alongside blink menu
   },
 
-  blink = {
-    enabled = false,             -- Enable blink source
-    render_append_chars = true,  -- Keep native append_chars ghost text
+  debug = {
+    immediate_shutdown = false,  -- Shutdown daemon immediately when no clients
   },
 })
 ```
 
 For detailed configuration documentation, see `:help cursortab-config`.
-
-### blink.cmp Integration
-
-This integration exposes a minimal blink source that only consumes
-`append_chars` (end-of-line ghost text). Complex diffs (multi-line edits,
-replacements, deletions, cursor prediction UI) still render via the native UI.
-
-```lua
-require("cursortab").setup({
-  keymaps = {
-    accept = false, -- Let blink manage <Tab>
-  },
-  blink = {
-    enabled = true,
-    render_append_chars = false, -- Disable native ghost text if desired
-  },
-})
-
-require("blink.cmp").setup({
-  sources = {
-    providers = {
-      cursortab = {
-        module = "cursortab.blink",
-        name = "Cursortab",
-      },
-    },
-  },
-})
-```
 
 ### Providers
 
@@ -303,6 +275,39 @@ require("cursortab").setup({
 vllm serve zed-industries/zeta --served-model-name zeta --port 8000
 
 # See the HuggingFace page for optimized deployment options
+```
+
+### blink.cmp Integration
+
+This integration exposes a minimal blink source that only consumes
+`append_chars` (end-of-line ghost text). Complex diffs (multi-line edits,
+replacements, deletions, cursor prediction UI) still render via the native UI.
+
+```lua
+require("cursortab").setup({
+  keymaps = {
+    accept = false, -- Let blink manage <Tab>
+  },
+  blink = {
+    enabled = true,
+    ghost_text = false,  -- Disable native ghost text
+  },
+})
+
+require("blink.cmp").setup({
+  sources = {
+    providers = {
+      cursortab = {
+        module = "cursortab.blink",
+        name = "cursortab",
+        async = true,
+        -- Should match provider.completion_timeout in cursortab config
+        timeout_ms = 5000,
+        score_offset = 50, -- Higher priority among suggestions
+      },
+    },
+  },
+})
 ```
 
 ## Usage
